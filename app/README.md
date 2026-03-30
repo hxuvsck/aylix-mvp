@@ -42,4 +42,3 @@ separation of frontend/backend is clear
 🚀 Commit
 git add app/README.md
 git commit -m "docs(app): replace expo default readme"
-git push
