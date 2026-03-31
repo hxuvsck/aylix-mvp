@@ -1,50 +1,69 @@
 import { useState } from "react";
 import { Button, Text, TextInput, View } from "react-native";
 
-const API = "http://localhost:4000";
+import { createProfile, createUser } from "../../lib/api";
+
+type FormState = {
+  name: string;
+  city: string;
+  languages: string;
+  interests: string;
+};
+
+const INITIAL_FORM_STATE: FormState = {
+  name: "",
+  city: "",
+  languages: "",
+  interests: "",
+};
+
+function splitCommaSeparatedValues(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 export default function Index() {
-  const [name, setName] = useState("");
-  const [city, setCity] = useState("");
-  const [languages, setLanguages] = useState("");
-  const [interests, setInterests] = useState("");
+  const [form, setForm] = useState(INITIAL_FORM_STATE);
   const [result, setResult] = useState("Ready");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const createProfile = async () => {
+  const updateField = (field: keyof FormState, value: string) => {
+    setForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  };
+
+  const handleCreateProfile = async () => {
+    setIsSubmitting(true);
+    setError("");
+    setResult("Ready");
+
     try {
-      setResult("Creating...");
-
-      const userRes = await fetch(`${API}/users`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: `${Date.now()}@test.com`,
-        }),
+      const user = await createUser({
+        email: `${Date.now()}@test.com`,
       });
 
-      const user = await userRes.json();
-
-      const profileRes = await fetch(`${API}/profiles`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: user.id,
-          displayName: name,
-          city,
-          languages: languages.split(","),
-          interests: interests.split(","),
-        }),
+      const profile = await createProfile({
+        userId: user.id,
+        displayName: form.name,
+        city: form.city,
+        languages: splitCommaSeparatedValues(form.languages),
+        interests: splitCommaSeparatedValues(form.interests),
       });
-
-      const profile = await profileRes.json();
 
       setResult(JSON.stringify(profile, null, 2));
-    } catch (err: any) {
-      setResult("ERROR: " + err.message);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Something went wrong.";
+
+      setError(message);
+      setResult("Ready");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -56,33 +75,41 @@ export default function Index() {
 
       <TextInput
         placeholder="Name"
-        value={name}
-        onChangeText={setName}
+        value={form.name}
+        onChangeText={(value) => updateField("name", value)}
         style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
       />
 
       <TextInput
         placeholder="City"
-        value={city}
-        onChangeText={setCity}
+        value={form.city}
+        onChangeText={(value) => updateField("city", value)}
         style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
       />
 
       <TextInput
         placeholder="Languages (comma separated)"
-        value={languages}
-        onChangeText={setLanguages}
+        value={form.languages}
+        onChangeText={(value) => updateField("languages", value)}
         style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
       />
 
       <TextInput
         placeholder="Interests (comma separated)"
-        value={interests}
-        onChangeText={setInterests}
+        value={form.interests}
+        onChangeText={(value) => updateField("interests", value)}
         style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
       />
 
-      <Button title="Create Profile" onPress={createProfile} />
+      <Button
+        title={isSubmitting ? "Creating..." : "Create Profile"}
+        onPress={handleCreateProfile}
+        disabled={isSubmitting}
+      />
+
+      {error ? (
+        <Text style={{ marginTop: 20, color: "red" }}>Error: {error}</Text>
+      ) : null}
 
       <Text style={{ marginTop: 20 }}>{result}</Text>
     </View>
