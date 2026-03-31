@@ -1,34 +1,90 @@
-import { useEffect, useState } from "react";
-import { Platform, Text, View } from "react-native";
+import { useState } from "react";
+import { Button, Text, TextInput, View } from "react-native";
 
-const API_BASE =
-  Platform.OS === "web"
-    ? "http://localhost:4000"
-    : "http://192.168.1.5:4000"; // ← replace with your IPv4
+const API = "http://localhost:4000";
 
 export default function Index() {
-  const [status, setStatus] = useState("Loading...");
+  const [name, setName] = useState("");
+  const [city, setCity] = useState("");
+  const [languages, setLanguages] = useState("");
+  const [interests, setInterests] = useState("");
+  const [result, setResult] = useState("Ready");
 
-  useEffect(() => {
-    fetch(`${API_BASE}/health`)
-      .then((res) => res.json())
-      .then((data) => setStatus(JSON.stringify(data)))
-      .catch((err) => setStatus(`Error: ${err.message}`));
-  }, []);
+  const createProfile = async () => {
+    try {
+      setResult("Creating...");
+
+      const userRes = await fetch(`${API}/users`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: `${Date.now()}@test.com`,
+        }),
+      });
+
+      const user = await userRes.json();
+
+      const profileRes = await fetch(`${API}/profiles`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          displayName: name,
+          city,
+          languages: languages.split(","),
+          interests: interests.split(","),
+        }),
+      });
+
+      const profile = await profileRes.json();
+
+      setResult(JSON.stringify(profile, null, 2));
+    } catch (err: any) {
+      setResult("ERROR: " + err.message);
+    }
+  };
 
   return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        padding: 24,
-      }}
-    >
-      <Text style={{ fontSize: 20, marginBottom: 12 }}>
-        Aylix MVP
+    <View style={{ flex: 1, padding: 20, backgroundColor: "white" }}>
+      <Text style={{ fontSize: 24, marginBottom: 20 }}>
+        Aylix Onboarding
       </Text>
-      <Text>{status}</Text>
+
+      <TextInput
+        placeholder="Name"
+        value={name}
+        onChangeText={setName}
+        style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
+      />
+
+      <TextInput
+        placeholder="City"
+        value={city}
+        onChangeText={setCity}
+        style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
+      />
+
+      <TextInput
+        placeholder="Languages (comma separated)"
+        value={languages}
+        onChangeText={setLanguages}
+        style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
+      />
+
+      <TextInput
+        placeholder="Interests (comma separated)"
+        value={interests}
+        onChangeText={setInterests}
+        style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
+      />
+
+      <Button title="Create Profile" onPress={createProfile} />
+
+      <Text style={{ marginTop: 20 }}>{result}</Text>
     </View>
   );
 }
