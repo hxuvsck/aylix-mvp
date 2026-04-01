@@ -25,7 +25,7 @@ type Profile = {
   languages?: string[];
   interests?: string[];
   vibeTags?: string[];
-  travelStyleTags?: string[];
+  travelStyle?: string[];
   helpTopics?: string[];
 };
 
@@ -85,7 +85,7 @@ app.post("/profiles", (req, res) => {
     languages: rawLanguages,
     interests: rawInterests,
     vibeTags: rawVibeTags,
-    travelStyleTags: rawTravelStyleTags,
+    travelStyle: rawTravelStyle,
     helpTopics: rawHelpTopics,
   } = req.body;
 
@@ -97,7 +97,7 @@ app.post("/profiles", (req, res) => {
   const trimmedCity = getTrimmedString(city);
   const trimmedCountryCode = getTrimmedString(countryCode);
   const vibeTags = getStringArray(rawVibeTags);
-  const travelStyleTags = getStringArray(rawTravelStyleTags);
+  const travelStyle = getStringArray(rawTravelStyle);
   const helpTopics = getStringArray(rawHelpTopics);
 
   if (!userId) {
@@ -116,6 +116,18 @@ app.post("/profiles", (req, res) => {
     return res.status(400).json({ error: "interests must be an array" });
   }
 
+  if (vibeTags === null) {
+    return res.status(400).json({ error: "vibeTags must be an array" });
+  }
+
+  if (travelStyle === null) {
+    return res.status(400).json({ error: "travelStyle must be an array" });
+  }
+
+  if (helpTopics === null) {
+    return res.status(400).json({ error: "helpTopics must be an array" });
+  }
+
   const profile: Profile = {
     id: crypto.randomUUID(),
     userId,
@@ -126,7 +138,7 @@ app.post("/profiles", (req, res) => {
     ...(languages ? { languages } : {}),
     ...(interests ? { interests } : {}),
     ...(vibeTags ? { vibeTags } : {}),
-    ...(travelStyleTags ? { travelStyleTags } : {}),
+    ...(travelStyle ? { travelStyle } : {}),
     ...(helpTopics ? { helpTopics } : {}),
   };
 

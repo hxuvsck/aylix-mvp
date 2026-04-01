@@ -13,6 +13,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Screens: `onboarding`, `profile`
 - API access centralized in `app/lib/api.ts`
 - Local profile persistence via AsyncStorage in `app/lib/storage.ts`
+- Onboarding uses `ScrollView` to stay usable on smaller screens and with the keyboard open
 
 ### Backend
 
@@ -22,7 +23,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
   - `POST /users`
   - `POST /profiles`
   - `GET /profiles/:userId`
-- Minimal input validation on profile and user creation
+- Input validation for user creation and profile array fields
 
 ## Core User Flow
 
@@ -40,12 +41,16 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 - Expo app runs with router-based navigation
 - Onboarding screen creates a user and profile through the API
+- Onboarding supports display name, city, languages, interests, vibe tags, travel style, and help topics
 - Profile screen displays saved profile data
 - App remembers the created profile between launches
 - App auto-routes to onboarding or profile based on saved state
 - User can clear saved profile and restart the flow
+- Onboarding remains usable on small screens because the form scrolls correctly
+- Onboarding and profile copy now feel more product-oriented and less like raw dev screens
 - Express API exposes health, user creation, profile creation, and profile fetch endpoints
 - Backend uses safer UUID-based IDs instead of timestamp IDs
+- Profile creation now validates array-based profile fields consistently and returns `400` for malformed input
 
 ## Known Limitations
 
@@ -54,7 +59,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - No persistent backend storage
 - Backend data resets on server restart
 - No matching, calls, trust, or review flow yet
-- API validation is intentionally minimal
+- API validation is still intentionally light beyond required fields and array shape checks
 - Frontend profile state is stored only on-device
 
 ## Key Decisions
@@ -69,8 +74,9 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 - A small API layer keeps frontend networking easier to change
 - Local persistence adds meaningful product feel early without backend complexity
-- Minimal validation is still worth doing, even in an MVP
+- Minimal validation is still worth doing, even in an MVP, especially when profile data becomes more structured
 - Simpler routing decisions reduce friction during iteration
+- Small copy and usability improvements can make the app feel more like a product without changing the architecture
 
 ## Safety & Constraints
 
@@ -82,7 +88,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding and profile memory loop is working in MVP form.
+Core onboarding, profile memory, and match-ready profile capture are working in stable MVP form with basic QA fixes applied.
 
 ## Next Steps
 

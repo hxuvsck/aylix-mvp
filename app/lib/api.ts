@@ -20,6 +20,9 @@ type CreateProfileInput = {
   city?: string;
   languages?: string[];
   interests?: string[];
+  vibeTags?: string[];
+  travelStyle?: string[];
+  helpTopics?: string[];
 };
 
 type CreateProfileResponse = {
@@ -29,6 +32,9 @@ type CreateProfileResponse = {
   city?: string;
   languages?: string[];
   interests?: string[];
+  vibeTags?: string[];
+  travelStyle?: string[];
+  helpTopics?: string[];
 };
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
