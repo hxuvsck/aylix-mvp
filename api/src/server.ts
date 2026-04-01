@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import express from "express";
 import cors from "cors";
 
@@ -31,6 +32,25 @@ type Profile = {
 const users: User[] = [];
 const profiles: Profile[] = [];
 
+function getTrimmedString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getStringArray(value: unknown) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
@@ -40,13 +60,15 @@ app.get("/health", (_req, res) => {
 });
 
 app.post("/users", (req, res) => {
-  const { email, phone, role } = req.body;
+  const email = getTrimmedString(req.body?.email);
+
+  if (!email) {
+    return res.status(400).json({ error: "email is required" });
+  }
 
   const user: User = {
-    id: Date.now().toString(),
+    id: crypto.randomUUID(),
     email,
-    phone,
-    role,
   };
 
   users.push(user);
@@ -55,30 +77,57 @@ app.post("/users", (req, res) => {
 
 app.post("/profiles", (req, res) => {
   const {
-    userId,
-    displayName,
+    userId: rawUserId,
+    displayName: rawDisplayName,
     bio,
     city,
     countryCode,
-    languages,
-    interests,
-    vibeTags,
-    travelStyleTags,
-    helpTopics,
+    languages: rawLanguages,
+    interests: rawInterests,
+    vibeTags: rawVibeTags,
+    travelStyleTags: rawTravelStyleTags,
+    helpTopics: rawHelpTopics,
   } = req.body;
 
+  const userId = getTrimmedString(rawUserId);
+  const displayName = getTrimmedString(rawDisplayName);
+  const languages = getStringArray(rawLanguages);
+  const interests = getStringArray(rawInterests);
+  const trimmedBio = getTrimmedString(bio);
+  const trimmedCity = getTrimmedString(city);
+  const trimmedCountryCode = getTrimmedString(countryCode);
+  const vibeTags = getStringArray(rawVibeTags);
+  const travelStyleTags = getStringArray(rawTravelStyleTags);
+  const helpTopics = getStringArray(rawHelpTopics);
+
+  if (!userId) {
+    return res.status(400).json({ error: "userId is required" });
+  }
+
+  if (!displayName) {
+    return res.status(400).json({ error: "displayName is required" });
+  }
+
+  if (languages === null) {
+    return res.status(400).json({ error: "languages must be an array" });
+  }
+
+  if (interests === null) {
+    return res.status(400).json({ error: "interests must be an array" });
+  }
+
   const profile: Profile = {
-    id: Date.now().toString(),
+    id: crypto.randomUUID(),
     userId,
     displayName,
-    bio,
-    city,
-    countryCode,
-    languages,
-    interests,
-    vibeTags,
-    travelStyleTags,
-    helpTopics,
+    ...(trimmedBio ? { bio: trimmedBio } : {}),
+    ...(trimmedCity ? { city: trimmedCity } : {}),
+    ...(trimmedCountryCode ? { countryCode: trimmedCountryCode } : {}),
+    ...(languages ? { languages } : {}),
+    ...(interests ? { interests } : {}),
+    ...(vibeTags ? { vibeTags } : {}),
+    ...(travelStyleTags ? { travelStyleTags } : {}),
+    ...(helpTopics ? { helpTopics } : {}),
   };
 
   profiles.push(profile);
