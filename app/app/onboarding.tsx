@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Button, Text, TextInput, View } from "react-native";
 import { createProfile, createUser } from "../lib/api";
+import { saveProfile } from "../lib/storage";
 
 export default function OnboardingScreen() {
     const [name, setName] = useState("");
@@ -34,6 +35,7 @@ export default function OnboardingScreen() {
                     .filter(Boolean),
             });
 
+            await saveProfile(profile);
             setResult("Profile created");
 
             router.push({
