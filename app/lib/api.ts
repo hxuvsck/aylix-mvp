@@ -37,6 +37,18 @@ type CreateProfileResponse = {
   helpTopics?: string[];
 };
 
+export type Match = {
+  userId: string;
+  displayName: string;
+  city?: string;
+  score: number;
+  reasons?: string[];
+};
+
+type GetMatchesResponse = {
+  matches: Match[];
+};
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, headers, ...rest } = options;
 
@@ -75,4 +87,8 @@ export function createProfile(input: CreateProfileInput) {
     method: "POST",
     body: input,
   });
+}
+
+export function getMatches(userId: string) {
+  return request<GetMatchesResponse>(`/match/${userId}`);
 }
