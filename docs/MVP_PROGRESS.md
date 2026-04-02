@@ -10,7 +10,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 - Expo app for React Native and web
 - Expo Router for screen routing
-- Screens: `onboarding`, `profile`, `call`
+- Screens: `onboarding`, `profile`, `call`, `review`
 - API access centralized in `app/lib/api.ts`
 - Local profile persistence via AsyncStorage in `app/lib/storage.ts`
 - Onboarding uses `ScrollView` to stay usable on smaller screens and with the keyboard open
@@ -34,8 +34,13 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 5. The app creates a profile through `POST /profiles`.
 6. The created profile is saved locally.
 7. The app routes to the profile screen.
-8. On later launches, the app goes straight to the profile screen if saved profile data exists.
-9. The user can reset the saved profile and return to onboarding.
+8. The user can fetch top matches from the profile screen.
+9. The user can open a call screen from a selected match.
+10. The call screen shows a short connecting state, then a connected state with a simple timer.
+11. Ending the call routes the user to a review screen.
+12. The user submits a lightweight review and returns to the profile screen.
+13. On later launches, the app goes straight to the profile screen if saved profile data exists.
+14. The user can reset the saved profile and return to onboarding.
 
 ## What Currently Works
 
@@ -44,7 +49,10 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Onboarding supports display name, city, languages, interests, vibe tags, travel style, and help topics
 - Profile screen loads route params safely, falls back to AsyncStorage, and avoids the earlier render loop issue
 - Profile screen can fetch and display top matches with score and human-readable match reasons
-- Match cards can open a call placeholder screen with selected match details
+- Match cards can open a call screen with selected match details
+- Call screen simulates a basic call lifecycle with connecting and connected states
+- Call screen starts a simple MM:SS timer after the connected state begins
+- Call flow now runs from match to call to review and back to profile
 - App remembers the created profile between launches
 - App auto-routes to onboarding or profile based on saved state
 - User can clear saved profile and restart the flow
@@ -95,12 +103,12 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding, profile memory, rule-based matching, and the call placeholder flow are working in stable MVP form, and the app is now in a tightening and QA-focused phase.
+Core onboarding, profile memory, rule-based matching, simulated call states, and the review loop are working in stable MVP form, and the app is now in a tightening and QA-focused phase.
 
 ## Next Steps
 
 - Refine rule-based matching quality within the current deterministic system
-- Continue tightening profile, match, and call placeholder behavior for reliability
+- Continue tightening profile, match, call, and review behavior for reliability
 - Improve profile and match presentation without changing the core flow
 - Hold the architecture simple until the current loop feels consistently stable
 
