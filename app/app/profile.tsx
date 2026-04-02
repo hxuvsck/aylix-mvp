@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { Button, ScrollView, Text, View } from "react-native";
 import { getMatches, type Match } from "../lib/api";
-import { clearSavedProfile, getSavedProfile } from "../lib/storage";
+import { clearSavedProfile, getLatestReview, getSavedProfile, type LatestReview } from "../lib/storage";
 
 type ProfileData = {
     userId?: string;
@@ -42,6 +42,7 @@ export default function ProfileScreen() {
     }>();
 
     const [profile, setProfile] = useState<ProfileData | null>(null);
+    const [latestReview, setLatestReview] = useState<LatestReview | null>(null);
     const [isLoadingProfile, setIsLoadingProfile] = useState(true);
     const [matches, setMatches] = useState<Match[]>([]);
     const [matchesError, setMatchesError] = useState("");
@@ -80,12 +81,14 @@ export default function ProfileScreen() {
                     travelStyle: safeParseArray(travelStyle),
                     helpTopics: safeParseArray(helpTopics),
                 });
+                setLatestReview(await getLatestReview());
                 setIsLoadingProfile(false);
                 return;
             }
 
             const saved = await getSavedProfile();
             setProfile(saved);
+            setLatestReview(await getLatestReview());
             setIsLoadingProfile(false);
         };
 
@@ -201,6 +204,17 @@ export default function ProfileScreen() {
                         <Button title="Start Call" onPress={() => handleStartCall(match)} />
                     </View>
                 )) : null}
+
+                {latestReview ? (
+                    <View style={{ marginTop: 24, marginBottom: 20 }}>
+                        <Text style={{ fontSize: 22, marginBottom: 12 }}>Latest review</Text>
+                        <View style={{ borderWidth: 1, borderColor: "#ddd", padding: 12 }}>
+                            <Text style={{ fontSize: 16, marginBottom: 4 }}>{latestReview.displayName}</Text>
+                            <Text style={{ marginBottom: 4 }}>Rating: {latestReview.rating}</Text>
+                            <Text>Helpful: {latestReview.helpfulText || "No note added"}</Text>
+                        </View>
+                    </View>
+                ) : null}
 
                 <Button title="Reset and start over" onPress={handleReset} />
             </View>

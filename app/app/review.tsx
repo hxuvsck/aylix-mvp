@@ -1,0 +1,109 @@
+import { router, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
+import { Button, ScrollView, Text, TextInput, View } from "react-native";
+import { saveLatestReview } from "../lib/storage";
+
+function getSingleParam(value?: string | string[]) {
+    return Array.isArray(value) ? value[0] : value;
+}
+
+function safeParseArray(value?: string) {
+    if (!value) return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+export default function ReviewScreen() {
+    const params = useLocalSearchParams<{
+        userId?: string | string[];
+        displayName?: string | string[];
+        city?: string | string[];
+        score?: string | string[];
+        reasons?: string | string[];
+    }>();
+
+    const userId = getSingleParam(params.userId);
+    const displayName = getSingleParam(params.displayName);
+    const city = getSingleParam(params.city);
+    const score = getSingleParam(params.score);
+    const reasons = safeParseArray(getSingleParam(params.reasons));
+    const [rating, setRating] = useState<number | null>(null);
+    const [helpfulText, setHelpfulText] = useState("");
+
+    const handleSubmitReview = async () => {
+        if (!userId || !displayName || rating === null) {
+            return;
+        }
+
+        await saveLatestReview({
+            userId,
+            displayName,
+            city,
+            score,
+            reasons,
+            rating,
+            helpfulText,
+            submittedAt: new Date().toISOString(),
+        });
+
+        router.replace("/profile");
+    };
+
+    if (!userId || !displayName) {
+        return (
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white", padding: 20 }}>
+                <Text style={{ marginBottom: 12, textAlign: "center" }}>
+                    Review details are missing. Return to your profile and start the call again.
+                </Text>
+                <Button title="Back to Profile" onPress={() => router.replace("/profile")} />
+            </View>
+        );
+    }
+
+    return (
+        <ScrollView
+            style={{ flex: 1, backgroundColor: "white" }}
+            contentContainerStyle={{ padding: 20, justifyContent: "center", flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+        >
+            <View>
+                <Text style={{ fontSize: 28, marginBottom: 8 }}>Review Call</Text>
+                <Text style={{ fontSize: 18, marginBottom: 8 }}>{displayName}</Text>
+                <Text style={{ marginBottom: 20, color: "#444" }}>
+                    Share a quick rating and note about what was helpful.
+                </Text>
+
+                <Text style={{ marginBottom: 10 }}>Rating: {rating ?? "Not selected"}</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16 }}>
+                    {[1, 2, 3, 4, 5].map((value) => (
+                        <View key={value} style={{ marginRight: 8, marginBottom: 8 }}>
+                            <Button title={String(value)} onPress={() => setRating(value)} />
+                        </View>
+                    ))}
+                </View>
+
+                <TextInput
+                    placeholder="What was helpful?"
+                    value={helpfulText}
+                    onChangeText={setHelpfulText}
+                    style={{ borderWidth: 1, marginBottom: 16, padding: 10 }}
+                    multiline
+                />
+
+                <View style={{ marginBottom: 12 }}>
+                    <Button
+                        title={rating === null ? "Select a rating to submit" : "Submit Review"}
+                        onPress={() => void handleSubmitReview()}
+                        disabled={rating === null}
+                    />
+                </View>
+
+                <Button title="Back to Profile" onPress={() => router.replace("/profile")} />
+            </View>
+        </ScrollView>
+    );
+}

@@ -30,6 +30,19 @@ export default function CallScreen() {
     const score = getSingleParam(params.score);
     const reasons = safeParseArray(getSingleParam(params.reasons));
 
+    const handleEndCall = () => {
+        router.push({
+            pathname: "/review",
+            params: {
+                userId,
+                displayName,
+                city: city ?? "",
+                score: score ?? "0",
+                reasons: JSON.stringify(reasons),
+            },
+        });
+    };
+
     if (!userId || !displayName) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white", padding: 20 }}>
@@ -60,7 +73,7 @@ export default function CallScreen() {
                 </Text>
 
                 <View style={{ marginBottom: 12 }}>
-                    <Button title="End Call" onPress={() => router.back()} />
+                    <Button title="End Call" onPress={handleEndCall} />
                 </View>
 
                 <Button title="Back to Profile" onPress={() => router.replace("/profile")} />

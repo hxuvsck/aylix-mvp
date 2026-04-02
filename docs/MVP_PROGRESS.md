@@ -10,7 +10,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 - Expo app for React Native and web
 - Expo Router for screen routing
-- Screens: `onboarding`, `profile`
+- Screens: `onboarding`, `profile`, `call`
 - API access centralized in `app/lib/api.ts`
 - Local profile persistence via AsyncStorage in `app/lib/storage.ts`
 - Onboarding uses `ScrollView` to stay usable on smaller screens and with the keyboard open
@@ -42,8 +42,9 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Expo app runs with router-based navigation
 - Onboarding screen creates a user and profile through the API
 - Onboarding supports display name, city, languages, interests, vibe tags, travel style, and help topics
-- Profile screen displays saved profile data
+- Profile screen loads route params safely, falls back to AsyncStorage, and avoids the earlier render loop issue
 - Profile screen can fetch and display top matches with score and human-readable match reasons
+- Match cards can open a call placeholder screen with selected match details
 - App remembers the created profile between launches
 - App auto-routes to onboarding or profile based on saved state
 - User can clear saved profile and restart the flow
@@ -63,7 +64,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Matching is still rule-based with simple overlap scoring
 - No weighting system for stronger or weaker signal types
 - No real-time presence or availability in matching
-- No call functionality yet
+- Call screen is only a placeholder flow and does not implement real audio
 - API validation is still intentionally light beyond required fields and array shape checks
 - Frontend profile state is stored only on-device
 
@@ -81,6 +82,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Local persistence adds meaningful product feel early without backend complexity
 - Minimal validation is still worth doing, even in an MVP, especially when profile data becomes more structured
 - Simpler routing decisions reduce friction during iteration
+- Stabilizing screen load behavior matters as much as feature work in small MVP flows
 - Small copy and usability improvements can make the app feel more like a product without changing the architecture
 
 ## Safety & Constraints
@@ -93,13 +95,14 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding, profile memory, and basic rule-based matching are working in stable MVP form, with match explanations now visible in the profile experience.
+Core onboarding, profile memory, rule-based matching, and the call placeholder flow are working in stable MVP form, and the app is now in a tightening and QA-focused phase.
 
 ## Next Steps
 
 - Refine rule-based matching quality within the current deterministic system
+- Continue tightening profile, match, and call placeholder behavior for reliability
 - Improve profile and match presentation without changing the core flow
-- Continue tightening the core loop before adding heavier systems like calls or real-time state
+- Hold the architecture simple until the current loop feels consistently stable
 
 ## Build Principle
 
