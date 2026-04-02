@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Button, ScrollView, Text, TextInput, View } from "react-native";
-import { saveLatestReview } from "../lib/storage";
+import { saveLatestReview, updateUserTrust } from "../lib/storage";
 
 function getSingleParam(value?: string | string[]) {
     return Array.isArray(value) ? value[0] : value;
@@ -49,6 +49,7 @@ export default function ReviewScreen() {
             helpfulText,
             submittedAt: new Date().toISOString(),
         });
+        await updateUserTrust(userId, rating);
 
         router.replace("/profile");
     };

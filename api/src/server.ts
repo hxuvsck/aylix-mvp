@@ -19,6 +19,7 @@ type Profile = {
   id: string;
   userId: string;
   displayName: string;
+  isAvailable?: boolean;
   bio?: string;
   city?: string;
   countryCode?: string;
@@ -143,6 +144,14 @@ function getStringArray(value: unknown) {
     .filter(Boolean);
 }
 
+function getBoolean(value: unknown) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return typeof value === "boolean" ? value : null;
+}
+
 function getOverlapCount(valuesA?: string[], valuesB?: string[]) {
   if (!valuesA?.length || !valuesB?.length) {
     return 0;
@@ -264,6 +273,7 @@ app.post("/profiles", (req, res) => {
   const {
     userId: rawUserId,
     displayName: rawDisplayName,
+    isAvailable: rawIsAvailable,
     bio,
     city,
     countryCode,
@@ -276,6 +286,7 @@ app.post("/profiles", (req, res) => {
 
   const userId = getTrimmedString(rawUserId);
   const displayName = getTrimmedString(rawDisplayName);
+  const isAvailable = getBoolean(rawIsAvailable);
   const languages = getStringArray(rawLanguages);
   const interests = getStringArray(rawInterests);
   const trimmedBio = getTrimmedString(bio);
@@ -291,6 +302,10 @@ app.post("/profiles", (req, res) => {
 
   if (!displayName) {
     return res.status(400).json({ error: "displayName is required" });
+  }
+
+  if (isAvailable === null) {
+    return res.status(400).json({ error: "isAvailable must be a boolean" });
   }
 
   if (languages === null) {
@@ -317,6 +332,7 @@ app.post("/profiles", (req, res) => {
     id: crypto.randomUUID(),
     userId,
     displayName,
+    ...(isAvailable !== undefined ? { isAvailable } : {}),
     ...(trimmedBio ? { bio: trimmedBio } : {}),
     ...(trimmedCity ? { city: trimmedCity } : {}),
     ...(trimmedCountryCode ? { countryCode: trimmedCountryCode } : {}),
@@ -353,7 +369,10 @@ app.get("/match/:userId", (req, res) => {
   }
 
   const matches: MatchResult[] = profiles
-    .filter((profile) => profile.userId !== currentProfile.userId)
+    .filter(
+      (profile) =>
+        profile.userId !== currentProfile.userId && profile.isAvailable !== false
+    )
     .map((profile) => {
       const score = getMatchScore(currentProfile, profile);
 

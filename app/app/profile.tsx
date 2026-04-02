@@ -2,17 +2,33 @@ import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { Button, ScrollView, Text, View } from "react-native";
 import { getMatches, type Match } from "../lib/api";
-import { clearSavedProfile, getLatestReview, getSavedProfile, type LatestReview } from "../lib/storage";
+import {
+    clearSavedProfile,
+    DEFAULT_REVIEW_COUNT,
+    DEFAULT_TRUST_SCORE,
+    getLatestReview,
+    getSavedProfile,
+    getUserTrust,
+    type LatestReview,
+} from "../lib/storage";
 
 type ProfileData = {
     userId?: string;
     displayName?: string;
+    isAvailable?: boolean;
     city?: string;
     languages?: string[];
     interests?: string[];
     vibeTags?: string[];
     travelStyle?: string[];
     helpTopics?: string[];
+    trustScore?: number;
+    reviewCount?: number;
+};
+
+type MatchWithTrust = Match & {
+    trustScore?: number;
+    reviewCount?: number;
 };
 
 function safeParseArray(value?: string) {
@@ -29,10 +45,38 @@ function getSingleParam(value?: string | string[]) {
     return Array.isArray(value) ? value[0] : value;
 }
 
+function getBooleanParam(value?: string | string[]) {
+    const param = getSingleParam(value);
+
+    if (param === "false") {
+        return false;
+    }
+
+    if (param === "true") {
+        return true;
+    }
+
+    return undefined;
+}
+
+function normalizeProfile(profile?: ProfileData | null) {
+    if (!profile) {
+        return null;
+    }
+
+    return {
+        ...profile,
+        isAvailable: profile.isAvailable ?? true,
+        trustScore: profile.trustScore ?? DEFAULT_TRUST_SCORE,
+        reviewCount: profile.reviewCount ?? DEFAULT_REVIEW_COUNT,
+    };
+}
+
 export default function ProfileScreen() {
     const params = useLocalSearchParams<{
         userId?: string | string[];
         displayName?: string | string[];
+        isAvailable?: string | string[];
         city?: string | string[];
         languages?: string | string[];
         interests?: string | string[];
@@ -44,7 +88,7 @@ export default function ProfileScreen() {
     const [profile, setProfile] = useState<ProfileData | null>(null);
     const [latestReview, setLatestReview] = useState<LatestReview | null>(null);
     const [isLoadingProfile, setIsLoadingProfile] = useState(true);
-    const [matches, setMatches] = useState<Match[]>([]);
+    const [matches, setMatches] = useState<MatchWithTrust[]>([]);
     const [matchesError, setMatchesError] = useState("");
     const [isFindingMatches, setIsFindingMatches] = useState(false);
 
@@ -53,6 +97,7 @@ export default function ProfileScreen() {
             const {
                 userId: rawUserId,
                 displayName: rawDisplayName,
+                isAvailable: rawIsAvailable,
                 city: rawCity,
                 languages: rawLanguages,
                 interests: rawInterests,
@@ -63,6 +108,7 @@ export default function ProfileScreen() {
 
             const userId = getSingleParam(rawUserId);
             const displayName = getSingleParam(rawDisplayName);
+            const isAvailable = getBooleanParam(rawIsAvailable);
             const city = getSingleParam(rawCity);
             const languages = getSingleParam(rawLanguages);
             const interests = getSingleParam(rawInterests);
@@ -71,23 +117,26 @@ export default function ProfileScreen() {
             const helpTopics = getSingleParam(rawHelpTopics);
 
             if (userId) {
-                setProfile({
-                    userId,
-                    displayName,
-                    city,
-                    languages: safeParseArray(languages),
-                    interests: safeParseArray(interests),
-                    vibeTags: safeParseArray(vibeTags),
-                    travelStyle: safeParseArray(travelStyle),
-                    helpTopics: safeParseArray(helpTopics),
-                });
+                setProfile(
+                    normalizeProfile({
+                        userId,
+                        displayName,
+                        isAvailable,
+                        city,
+                        languages: safeParseArray(languages),
+                        interests: safeParseArray(interests),
+                        vibeTags: safeParseArray(vibeTags),
+                        travelStyle: safeParseArray(travelStyle),
+                        helpTopics: safeParseArray(helpTopics),
+                    })
+                );
                 setLatestReview(await getLatestReview());
                 setIsLoadingProfile(false);
                 return;
             }
 
             const saved = await getSavedProfile();
-            setProfile(saved);
+            setProfile(normalizeProfile(saved));
             setLatestReview(await getLatestReview());
             setIsLoadingProfile(false);
         };
@@ -112,7 +161,19 @@ export default function ProfileScreen() {
             setMatchesError("");
 
             const response = await getMatches(profile.userId);
-            setMatches(response.matches);
+            const matchesWithTrust = await Promise.all(
+                response.matches.map(async (match) => {
+                    const trust = await getUserTrust(match.userId);
+
+                    return {
+                        ...match,
+                        trustScore: trust.trustScore,
+                        reviewCount: trust.reviewCount,
+                    };
+                })
+            );
+
+            setMatches(matchesWithTrust);
         } catch (err: any) {
             setMatches([]);
             setMatchesError(err.message ?? "Could not load matches.");
@@ -166,6 +227,9 @@ export default function ProfileScreen() {
 
                 <Text style={{ marginBottom: 8 }}>User ID: {profile.userId}</Text>
                 <Text style={{ marginBottom: 8 }}>Name: {profile.displayName}</Text>
+                <Text style={{ marginBottom: 8 }}>
+                    Availability: {profile.isAvailable === false ? "Not available" : "Available to help"}
+                </Text>
                 <Text style={{ marginBottom: 8 }}>City: {profile.city}</Text>
                 <Text style={{ marginBottom: 8 }}>Languages: {(profile.languages ?? []).join(", ")}</Text>
                 <Text style={{ marginBottom: 8 }}>Interests: {(profile.interests ?? []).join(", ")}</Text>
@@ -199,7 +263,11 @@ export default function ProfileScreen() {
                     >
                         <Text style={{ fontSize: 16, marginBottom: 4 }}>{match.displayName}</Text>
                         <Text style={{ marginBottom: 4 }}>City: {match.city ?? "Unknown"}</Text>
+                        <Text style={{ marginBottom: 4 }}>Available now</Text>
                         <Text style={{ marginBottom: 4 }}>Score: {match.score}</Text>
+                        <Text style={{ marginBottom: 4 }}>
+                            ⭐ {match.trustScore ?? DEFAULT_TRUST_SCORE} ({match.reviewCount ?? DEFAULT_REVIEW_COUNT} reviews)
+                        </Text>
                         <Text style={{ marginBottom: 12 }}>Reasons: {(match.reasons ?? []).join(", ")}</Text>
                         <Button title="Start Call" onPress={() => handleStartCall(match)} />
                     </View>

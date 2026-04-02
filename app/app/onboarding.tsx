@@ -7,6 +7,7 @@ import { saveProfile } from "../lib/storage";
 export default function OnboardingScreen() {
     const [name, setName] = useState("");
     const [city, setCity] = useState("");
+    const [isAvailable, setIsAvailable] = useState(true);
     const [languages, setLanguages] = useState("");
     const [interests, setInterests] = useState("");
     const [vibe, setVibe] = useState("");
@@ -34,6 +35,7 @@ export default function OnboardingScreen() {
             const profile = await createProfile({
                 userId: user.id,
                 displayName: name || "Anonymous",
+                isAvailable,
                 city,
                 languages: splitCommaSeparatedValues(languages),
                 interests: splitCommaSeparatedValues(interests),
@@ -50,6 +52,7 @@ export default function OnboardingScreen() {
                 params: {
                     userId: profile.userId,
                     displayName: profile.displayName,
+                    isAvailable: profile.isAvailable === false ? "false" : "true",
                     city: profile.city ?? "",
                     languages: JSON.stringify(profile.languages ?? []),
                     interests: JSON.stringify(profile.interests ?? []),
@@ -90,6 +93,16 @@ export default function OnboardingScreen() {
                     onChangeText={setCity}
                     style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
                 />
+
+                <Text style={{ marginBottom: 8 }}>
+                    Availability: {isAvailable ? "Available to help" : "Not available"}
+                </Text>
+                <View style={{ marginBottom: 10 }}>
+                    <Button
+                        title={isAvailable ? "Set as not available" : "Set as available"}
+                        onPress={() => setIsAvailable((current) => !current)}
+                    />
+                </View>
 
                 <TextInput
                     placeholder="Languages (comma separated)"

@@ -12,8 +12,9 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Expo Router for screen routing
 - Screens: `onboarding`, `profile`, `call`, `review`
 - API access centralized in `app/lib/api.ts`
-- Local profile persistence via AsyncStorage in `app/lib/storage.ts`
+- Local profile, latest review, and trust persistence via AsyncStorage in `app/lib/storage.ts`
 - Onboarding uses `ScrollView` to stay usable on smaller screens and with the keyboard open
+- Onboarding includes a simple local availability selector for helper readiness
 
 ### Backend
 
@@ -23,7 +24,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
   - `POST /users`
   - `POST /profiles`
   - `GET /profiles/:userId`
-- Input validation for user creation and profile array fields
+- Input validation for user creation, profile availability, and profile array fields
 
 ## Core User Flow
 
@@ -34,25 +35,34 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 5. The app creates a profile through `POST /profiles`.
 6. The created profile is saved locally.
 7. The app routes to the profile screen.
-8. The user can fetch top matches from the profile screen.
-9. The user can open a call screen from a selected match.
-10. The call screen shows a short connecting state, then a connected state with a simple timer.
-11. Ending the call routes the user to a review screen.
-12. The user submits a lightweight review and returns to the profile screen.
-13. On later launches, the app goes straight to the profile screen if saved profile data exists.
-14. The user can reset the saved profile and return to onboarding.
+8. The user can see whether their profile is currently available to help.
+9. The user can fetch top matches from the profile screen.
+10. Matching excludes candidates who are explicitly marked unavailable.
+11. The user can open a call screen from a selected match.
+12. The call screen shows a short connecting state, then a connected state with a simple timer.
+13. Ending the call routes the user to a review screen.
+14. The user submits a lightweight review, which also updates local trust for the reviewed user.
+15. The user returns to the profile screen and can see trust displayed on match cards.
+16. On later launches, the app goes straight to the profile screen if saved profile data exists.
+17. The user can reset the saved profile and return to onboarding.
 
 ## What Currently Works
 
 - Expo app runs with router-based navigation
 - Onboarding screen creates a user and profile through the API
 - Onboarding supports display name, city, languages, interests, vibe tags, travel style, and help topics
+- Onboarding lets new profiles default to available and optionally mark themselves not available
 - Profile screen loads route params safely, falls back to AsyncStorage, and avoids the earlier render loop issue
+- Profile screen shows whether the current profile is available to help
 - Profile screen can fetch and display top matches with score and human-readable match reasons
+- Matching now filters out candidates who are explicitly unavailable while keeping older profiles backward compatible
+- Match cards now display local trust as `⭐ trustScore (reviewCount reviews)`
+- Match cards display a simple `Available now` readiness label
 - Match cards can open a call screen with selected match details
 - Call screen simulates a basic call lifecycle with connecting and connected states
 - Call screen starts a simple MM:SS timer after the connected state begins
 - Call flow now runs from match to call to review and back to profile
+- Review submit now updates a local per-user trust snapshot using the latest rating
 - App remembers the created profile between launches
 - App auto-routes to onboarding or profile based on saved state
 - User can clear saved profile and restart the flow
@@ -71,7 +81,9 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Backend data resets on server restart
 - Matching is still rule-based with simple overlap scoring
 - No weighting system for stronger or weaker signal types
-- No real-time presence or availability in matching
+- Trust is frontend-only and stored locally on-device
+- Trust uses a simple averaging formula with defaults instead of a richer reputation model
+- Availability is a simple profile flag and not a real-time presence system
 - Call screen is only a placeholder flow and does not implement real audio
 - API validation is still intentionally light beyond required fields and array shape checks
 - Frontend profile state is stored only on-device
@@ -103,15 +115,32 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding, profile memory, rule-based matching, simulated call states, and the review loop are working in stable MVP form, and the app is now in a tightening and QA-focused phase.
+Core onboarding, profile memory, local readiness, rule-based matching, local trust, simulated call states, and the review loop are working in stable MVP form, and the app is now in a tightening and QA-focused phase.
 
 ## Next Steps
 
 - Refine rule-based matching quality within the current deterministic system
-- Continue tightening profile, match, call, and review behavior for reliability
+- Continue tightening profile, readiness, match, trust, call, and review behavior for reliability
 - Improve profile and match presentation without changing the core flow
 - Hold the architecture simple until the current loop feels consistently stable
 
 ## Build Principle
 
 Build the smallest useful version of the core user loop, make it reliable, and delay heavier infrastructure until it is truly needed.
+
+## System Boundaries
+
+- Reality vs simulation:
+  Profile data and matching logic are real within the current app flow. The call layer is simulated and does not provide real audio. Reviews, trust, and saved state are local-only and stored on-device.
+- Single-device limitation:
+  The current system behaves as a single-device simulation. There is no shared backend state that synchronizes user activity across devices.
+- Identity limitation:
+  There is no authentication, and user identity is not persistent across devices or installs.
+- Interaction limitation:
+  There are no real call sessions, no acceptance or rejection flow, and no interaction tracking beyond the local placeholder flow.
+- Operator system missing:
+  The current MVP does not distinguish between traveler and local helper or operator roles.
+- Platform limitations:
+  There is no real-time system, no backend persistence, and no global reputation model.
+- Purpose of current system:
+  This MVP is designed to validate the flow, validate the matching concept, and validate the interaction loop.

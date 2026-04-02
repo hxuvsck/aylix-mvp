@@ -17,6 +17,7 @@ type CreateUserResponse = {
 type CreateProfileInput = {
   userId: string;
   displayName: string;
+  isAvailable?: boolean;
   city?: string;
   languages?: string[];
   interests?: string[];
@@ -29,6 +30,7 @@ type CreateProfileResponse = {
   id: string;
   userId: string;
   displayName: string;
+  isAvailable?: boolean;
   city?: string;
   languages?: string[];
   interests?: string[];
