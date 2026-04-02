@@ -25,45 +25,72 @@ function safeParseArray(value?: string) {
     }
 }
 
+function getSingleParam(value?: string | string[]) {
+    return Array.isArray(value) ? value[0] : value;
+}
+
 export default function ProfileScreen() {
     const params = useLocalSearchParams<{
-        userId?: string;
-        displayName?: string;
-        city?: string;
-        languages?: string;
-        interests?: string;
-        vibeTags?: string;
-        travelStyle?: string;
-        helpTopics?: string;
+        userId?: string | string[];
+        displayName?: string | string[];
+        city?: string | string[];
+        languages?: string | string[];
+        interests?: string | string[];
+        vibeTags?: string | string[];
+        travelStyle?: string | string[];
+        helpTopics?: string | string[];
     }>();
 
     const [profile, setProfile] = useState<ProfileData | null>(null);
+    const [isLoadingProfile, setIsLoadingProfile] = useState(true);
     const [matches, setMatches] = useState<Match[]>([]);
     const [matchesError, setMatchesError] = useState("");
     const [isFindingMatches, setIsFindingMatches] = useState(false);
 
     useEffect(() => {
         const loadProfile = async () => {
-            if (params.userId) {
+            const {
+                userId: rawUserId,
+                displayName: rawDisplayName,
+                city: rawCity,
+                languages: rawLanguages,
+                interests: rawInterests,
+                vibeTags: rawVibeTags,
+                travelStyle: rawTravelStyle,
+                helpTopics: rawHelpTopics,
+            } = params;
+
+            const userId = getSingleParam(rawUserId);
+            const displayName = getSingleParam(rawDisplayName);
+            const city = getSingleParam(rawCity);
+            const languages = getSingleParam(rawLanguages);
+            const interests = getSingleParam(rawInterests);
+            const vibeTags = getSingleParam(rawVibeTags);
+            const travelStyle = getSingleParam(rawTravelStyle);
+            const helpTopics = getSingleParam(rawHelpTopics);
+
+            if (userId) {
                 setProfile({
-                    userId: params.userId,
-                    displayName: params.displayName,
-                    city: params.city,
-                    languages: safeParseArray(params.languages),
-                    interests: safeParseArray(params.interests),
-                    vibeTags: safeParseArray(params.vibeTags),
-                    travelStyle: safeParseArray(params.travelStyle),
-                    helpTopics: safeParseArray(params.helpTopics),
+                    userId,
+                    displayName,
+                    city,
+                    languages: safeParseArray(languages),
+                    interests: safeParseArray(interests),
+                    vibeTags: safeParseArray(vibeTags),
+                    travelStyle: safeParseArray(travelStyle),
+                    helpTopics: safeParseArray(helpTopics),
                 });
+                setIsLoadingProfile(false);
                 return;
             }
 
             const saved = await getSavedProfile();
             setProfile(saved);
+            setIsLoadingProfile(false);
         };
 
         void loadProfile();
-    }, [params]);
+    }, []);
 
     const handleReset = async () => {
         await clearSavedProfile();
@@ -91,10 +118,34 @@ export default function ProfileScreen() {
         }
     };
 
-    if (!profile) {
+    const handleStartCall = (match: Match) => {
+        router.push({
+            pathname: "/call",
+            params: {
+                userId: match.userId,
+                displayName: match.displayName,
+                city: match.city ?? "",
+                score: String(match.score),
+                reasons: JSON.stringify(match.reasons ?? []),
+            },
+        });
+    };
+
+    if (isLoadingProfile) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
                 <Text>Loading profile...</Text>
+            </View>
+        );
+    }
+
+    if (!profile) {
+        return (
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white", padding: 20 }}>
+                <Text style={{ marginBottom: 12, textAlign: "center" }}>
+                    No saved profile was found. Create a profile to continue.
+                </Text>
+                <Button title="Go to onboarding" onPress={() => router.replace("/onboarding")} />
             </View>
         );
     }
@@ -124,18 +175,21 @@ export default function ProfileScreen() {
                     onPress={handleFindMatches}
                     disabled={isFindingMatches}
                 />
+                {isFindingMatches ? (
+                    <Text style={{ marginTop: 12, color: "#444" }}>Looking for strong matches...</Text>
+                ) : null}
 
                 <Text style={{ fontSize: 22, marginTop: 24, marginBottom: 12 }}>Top matches</Text>
 
                 {matchesError ? <Text style={{ marginBottom: 12 }}>ERROR: {matchesError}</Text> : null}
 
-                {!matchesError && matches.length === 0 ? (
+                {!matchesError && !isFindingMatches && matches.length === 0 ? (
                     <Text style={{ marginBottom: 20, color: "#444" }}>
                         No strong matches yet. Try adjusting your profile or create more users.
                     </Text>
                 ) : null}
 
-                {matches.map((match) => (
+                {!matchesError && !isFindingMatches && matches.length > 0 ? matches.map((match) => (
                     <View
                         key={match.userId}
                         style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 10 }}
@@ -143,9 +197,10 @@ export default function ProfileScreen() {
                         <Text style={{ fontSize: 16, marginBottom: 4 }}>{match.displayName}</Text>
                         <Text style={{ marginBottom: 4 }}>City: {match.city ?? "Unknown"}</Text>
                         <Text style={{ marginBottom: 4 }}>Score: {match.score}</Text>
-                        <Text>Reasons: {(match.reasons ?? []).join(", ")}</Text>
+                        <Text style={{ marginBottom: 12 }}>Reasons: {(match.reasons ?? []).join(", ")}</Text>
+                        <Button title="Start Call" onPress={() => handleStartCall(match)} />
                     </View>
-                ))}
+                )) : null}
 
                 <Button title="Reset and start over" onPress={handleReset} />
             </View>

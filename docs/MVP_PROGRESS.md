@@ -43,14 +43,16 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Onboarding screen creates a user and profile through the API
 - Onboarding supports display name, city, languages, interests, vibe tags, travel style, and help topics
 - Profile screen displays saved profile data
+- Profile screen can fetch and display top matches with score and human-readable match reasons
 - App remembers the created profile between launches
 - App auto-routes to onboarding or profile based on saved state
 - User can clear saved profile and restart the flow
 - Onboarding remains usable on small screens because the form scrolls correctly
 - Onboarding and profile copy now feel more product-oriented and less like raw dev screens
-- Express API exposes health, user creation, profile creation, and profile fetch endpoints
+- Express API exposes health, user creation, profile creation, profile fetch, and match endpoints
 - Backend uses safer UUID-based IDs instead of timestamp IDs
 - Profile creation now validates array-based profile fields consistently and returns `400` for malformed input
+- Matching returns the top 5 rule-based results, excludes zero-score matches, and includes reasons based on shared profile categories
 
 ## Known Limitations
 
@@ -58,7 +60,10 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - No database
 - No persistent backend storage
 - Backend data resets on server restart
-- No matching, calls, trust, or review flow yet
+- Matching is still rule-based with simple overlap scoring
+- No weighting system for stronger or weaker signal types
+- No real-time presence or availability in matching
+- No call functionality yet
 - API validation is still intentionally light beyond required fields and array shape checks
 - Frontend profile state is stored only on-device
 
@@ -88,13 +93,13 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding, profile memory, and match-ready profile capture are working in stable MVP form with basic QA fixes applied.
+Core onboarding, profile memory, and basic rule-based matching are working in stable MVP form, with match explanations now visible in the profile experience.
 
 ## Next Steps
 
-- Stabilize the onboarding and profile experience
-- Improve UI clarity and polish within the current flow
-- Continue tightening the core loop before adding new major systems
+- Refine rule-based matching quality within the current deterministic system
+- Improve profile and match presentation without changing the core flow
+- Continue tightening the core loop before adding heavier systems like calls or real-time state
 
 ## Build Principle
 
