@@ -41,6 +41,10 @@ export default function ReviewScreen() {
     const [isSuccess, setIsSuccess] = useState(false);
 
     const handleSubmitReview = async () => {
+        if (isSubmitting) {
+            return;
+        }
+
         if (!requestId || !userId || !displayName || rating === null) {
             return;
         }

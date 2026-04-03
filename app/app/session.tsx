@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, ScrollView, Text, View } from "react-native";
 import {
     completeActiveSession,
@@ -52,6 +52,7 @@ export default function SessionScreen() {
     const [profile, setProfile] = useState<SavedProfile | null>(null);
     const [summary, setSummary] = useState<ReservedSessionSummary | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isMutating, setIsMutating] = useState(false);
     const [error, setError] = useState("");
 
     const loadSummary = async () => {
@@ -92,11 +93,12 @@ export default function SessionScreen() {
     }, [requestId, summary?.requestStatus]);
 
     const handleStartSession = async () => {
-        if (!requestId || !summary?.selectedOperatorId) {
+        if (!requestId || !summary?.selectedOperatorId || isMutating) {
             return;
         }
 
         try {
+            setIsMutating(true);
             setError("");
             await startRequestSession(requestId, {
                 operatorId: summary.selectedOperatorId,
@@ -105,15 +107,18 @@ export default function SessionScreen() {
             await loadSummary();
         } catch (err: any) {
             setError(err.message ?? "Could not start the session.");
+        } finally {
+            setIsMutating(false);
         }
     };
 
     const handleCompleteSession = async () => {
-        if (!requestId || !summary?.selectedOperatorId) {
+        if (!requestId || !summary?.selectedOperatorId || isMutating) {
             return;
         }
 
         try {
+            setIsMutating(true);
             setError("");
             await completeActiveSession(requestId, {
                 operatorId: summary.selectedOperatorId,
@@ -122,6 +127,8 @@ export default function SessionScreen() {
             await loadSummary();
         } catch (err: any) {
             setError(err.message ?? "Could not complete the session.");
+        } finally {
+            setIsMutating(false);
         }
     };
 
@@ -171,17 +178,12 @@ export default function SessionScreen() {
         );
     }
 
-    const stage = useMemo(() => {
-        if (summary.requestStatus === "completed") {
-            return "completed";
-        }
-
-        if (summary.requestStatus === "in_call") {
-            return "active";
-        }
-
-        return "reserved";
-    }, [summary.requestStatus]);
+    const stage =
+        summary.requestStatus === "completed"
+            ? "completed"
+            : summary.requestStatus === "in_call"
+              ? "active"
+              : "reserved";
     const elapsed = formatElapsed(summary.startedAt);
     const title =
         stage === "active"
@@ -269,13 +271,21 @@ export default function SessionScreen() {
 
             {stage === "reserved" ? (
                 <View style={{ marginBottom: 12 }}>
-                    <Button title="Start session" onPress={() => void handleStartSession()} />
+                    <Button
+                        title={isMutating ? "Starting session..." : "Start session"}
+                        onPress={() => void handleStartSession()}
+                        disabled={isMutating}
+                    />
                 </View>
             ) : null}
 
             {stage === "active" ? (
                 <View style={{ marginBottom: 12 }}>
-                    <Button title="Complete session" onPress={() => void handleCompleteSession()} />
+                    <Button
+                        title={isMutating ? "Completing session..." : "Complete session"}
+                        onPress={() => void handleCompleteSession()}
+                        disabled={isMutating}
+                    />
                 </View>
             ) : null}
 

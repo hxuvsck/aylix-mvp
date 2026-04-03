@@ -44,6 +44,7 @@ export default function OperatorRequestScreen() {
     const [requestState, setRequestState] = useState<RequestStateResponse | null>(null);
     const [sessionSummary, setSessionSummary] = useState<ReservedSessionSummary | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [isResponding, setIsResponding] = useState(false);
     const [error, setError] = useState("");
 
     const loadRequest = async () => {
@@ -75,11 +76,12 @@ export default function OperatorRequestScreen() {
     }, [requestId]);
 
     const handleRespond = async (action: "accept" | "decline") => {
-        if (!requestId || !profile?.userId) {
+        if (!requestId || !profile?.userId || isResponding) {
             return;
         }
 
         try {
+            setIsResponding(true);
             setError("");
             const response = await respondToRequest(requestId, {
                 operatorId: profile.userId,
@@ -89,6 +91,8 @@ export default function OperatorRequestScreen() {
             await loadRequest();
         } catch (err: any) {
             setError(err.message ?? "Could not send response.");
+        } finally {
+            setIsResponding(false);
         }
     };
 
@@ -187,9 +191,17 @@ export default function OperatorRequestScreen() {
             ) : ["nominated", "accepted"].includes(requestState.request.status) && !requestState.request.selectedOperatorId ? (
                 <>
                     <View style={{ marginBottom: 8 }}>
-                        <Button title="Send response: Accept" onPress={() => void handleRespond("accept")} />
+                        <Button
+                            title={isResponding ? "Sending response..." : "Send response: Accept"}
+                            onPress={() => void handleRespond("accept")}
+                            disabled={isResponding}
+                        />
                     </View>
-                    <Button title="Send response: Decline" onPress={() => void handleRespond("decline")} />
+                    <Button
+                        title={isResponding ? "Sending response..." : "Send response: Decline"}
+                        onPress={() => void handleRespond("decline")}
+                        disabled={isResponding}
+                    />
                 </>
             ) : (
                 <Text style={{ marginBottom: 20, color: "#444" }}>

@@ -36,6 +36,8 @@ type ResponseWithTrust = RequestResponseItem & {
 };
 
 const terminalStatuses: HelpRequestStatus[] = ["completed", "cancelled", "expired", "timed_out", "missed"];
+const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const intentLabels: Record<HelpIntent, string> = {
     food: "Food",
@@ -61,6 +63,7 @@ export default function RequestScreen() {
     const [responsesError, setResponsesError] = useState("");
     const [isMatching, setIsMatching] = useState(false);
     const [isLoadingResponses, setIsLoadingResponses] = useState(false);
+    const [isActionPending, setIsActionPending] = useState(false);
     const [hasRequested, setHasRequested] = useState(false);
 
     const hydrateResponsesWithTrust = async (responses: RequestResponseItem[]) =>
@@ -135,7 +138,11 @@ export default function RequestScreen() {
     }, [activeRequest?.id, activeRequest?.status, profile?.userId]);
 
     const handleFindOperators = async () => {
-        if (!profile?.userId) {
+        if (isMatching || isActionPending) {
+            return;
+        }
+
+        if (!profile?.userId || !uuidPattern.test(profile.userId.trim())) {
             setMatchesError("Profile is missing a user ID.");
             return;
         }
@@ -168,11 +175,12 @@ export default function RequestScreen() {
     };
 
     const handleExpandSearch = async () => {
-        if (!activeRequest?.id) {
+        if (!activeRequest?.id || isActionPending || isMatching) {
             return;
         }
 
         try {
+            setIsActionPending(true);
             setMatchesError("");
             const response = await expandRequest(activeRequest.id);
             setActiveRequest(response.request);
@@ -180,15 +188,18 @@ export default function RequestScreen() {
             await loadRequestView(response.request.id, profile?.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not expand search.");
+        } finally {
+            setIsActionPending(false);
         }
     };
 
     const handleRetryRequest = async () => {
-        if (!activeRequest?.id || !profile?.userId) {
+        if (!activeRequest?.id || !profile?.userId || isActionPending || isMatching) {
             return;
         }
 
         try {
+            setIsActionPending(true);
             setMatchesError("");
             const response = await retryRequest(activeRequest.id);
             setHasRequested(true);
@@ -197,15 +208,18 @@ export default function RequestScreen() {
             await loadRequestView(response.request.id, profile.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not retry request.");
+        } finally {
+            setIsActionPending(false);
         }
     };
 
     const handleSelectOperator = async (response: ResponseWithTrust) => {
-        if (!activeRequest?.id || !profile?.userId) {
+        if (!activeRequest?.id || !profile?.userId || isActionPending) {
             return;
         }
 
         try {
+            setIsActionPending(true);
             setResponsesError("");
             const reserveResponse = await reserveRequest(activeRequest.id, {
                 operatorId: response.operatorId,
@@ -216,6 +230,8 @@ export default function RequestScreen() {
             await loadRequestView(reserveResponse.request.id, profile.userId);
         } catch (err: any) {
             setResponsesError(err.message ?? "Could not select this operator.");
+        } finally {
+            setIsActionPending(false);
         }
     };
 
@@ -246,32 +262,38 @@ export default function RequestScreen() {
     };
 
     const handleCancelRequest = async () => {
-        if (!activeRequest?.id) {
+        if (!activeRequest?.id || isActionPending) {
             return;
         }
 
         try {
+            setIsActionPending(true);
             const response = await cancelRequest(activeRequest.id);
             setActiveRequest(response.request);
             setNominations(response.nominations);
             await loadRequestView(response.request.id, profile?.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not cancel request.");
+        } finally {
+            setIsActionPending(false);
         }
     };
 
     const handleReportNoShow = async () => {
-        if (!activeRequest?.id || !selectedOperator?.operatorId) {
+        if (!activeRequest?.id || !selectedOperator?.operatorId || isActionPending) {
             return;
         }
 
         try {
+            setIsActionPending(true);
             const response = await reportNoShow(activeRequest.id, selectedOperator.operatorId);
             setActiveRequest(response.request);
             setNominations(response.nominations);
             await loadRequestView(response.request.id, profile?.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not report no-show.");
+        } finally {
+            setIsActionPending(false);
         }
     };
 
@@ -366,7 +388,7 @@ export default function RequestScreen() {
                 <Button
                     title={isMatching ? "Finding operators..." : "Find operators"}
                     onPress={handleFindOperators}
-                    disabled={isMatching}
+                    disabled={isMatching || isActionPending}
                 />
 
                 {isMatching ? (
@@ -399,7 +421,11 @@ export default function RequestScreen() {
 
                 {activeRequest && ["open", "nominated", "accepted"].includes(activeRequest.status) ? (
                     <View style={{ marginTop: 12 }}>
-                        <Button title="Cancel request" onPress={() => void handleCancelRequest()} />
+                        <Button
+                            title={isActionPending ? "Cancelling request..." : "Cancel request"}
+                            onPress={() => void handleCancelRequest()}
+                            disabled={isActionPending}
+                        />
                     </View>
                 ) : null}
 
@@ -412,9 +438,13 @@ export default function RequestScreen() {
                 {canRecover ? (
                     <View style={{ marginTop: 12 }}>
                         <View style={{ marginBottom: 8 }}>
-                            <Button title="Find more operators" onPress={() => void handleExpandSearch()} />
+                            <Button
+                                title={isActionPending ? "Finding more operators..." : "Find more operators"}
+                                onPress={() => void handleExpandSearch()}
+                                disabled={isActionPending}
+                            />
                         </View>
-                        <Button title="Try again" onPress={() => void handleRetryRequest()} />
+                        <Button title="Try again" onPress={() => void handleRetryRequest()} disabled={isActionPending} />
                     </View>
                 ) : null}
 
@@ -464,7 +494,11 @@ export default function RequestScreen() {
                                 </View>
                             ) : null}
                             {activeRequest?.status === "in_call" ? (
-                                <Button title="Report no-show" onPress={() => void handleReportNoShow()} />
+                                <Button
+                                    title={isActionPending ? "Reporting no-show..." : "Report no-show"}
+                                    onPress={() => void handleReportNoShow()}
+                                    disabled={isActionPending}
+                                />
                             ) : null}
                         </View>
                     </>
@@ -527,8 +561,9 @@ export default function RequestScreen() {
                         </Text>
                         {response.selectable && activeRequest?.paymentStatus === "quoted" ? (
                             <Button
-                                title="Select operator"
+                                title={isActionPending ? "Selecting operator..." : "Select operator"}
                                 onPress={() => void handleSelectOperator(response)}
+                                disabled={isActionPending}
                             />
                         ) : (
                             <Text style={{ color: "#444" }}>

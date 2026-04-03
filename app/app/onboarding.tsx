@@ -33,6 +33,18 @@ export default function OnboardingScreen() {
     }
 
     const handleCreate = async () => {
+        if (isSubmitting) {
+            return;
+        }
+
+        const trimmedName = name.trim();
+        const trimmedCity = city.trim();
+
+        if (!trimmedName) {
+            setResult("ERROR: Name is required.");
+            return;
+        }
+
         try {
             setIsSubmitting(true);
             setResult("Creating...");
@@ -43,12 +55,12 @@ export default function OnboardingScreen() {
 
             const profile = await createProfile({
                 userId: user.id,
-                displayName: name || "Anonymous",
+                displayName: trimmedName,
                 isAvailable,
                 roles,
                 capabilities,
                 personality,
-                city,
+                ...(trimmedCity ? { city: trimmedCity } : {}),
                 languages: splitCommaSeparatedValues(languages),
                 interests: splitCommaSeparatedValues(interests),
                 vibeTags: splitCommaSeparatedValues(vibe),

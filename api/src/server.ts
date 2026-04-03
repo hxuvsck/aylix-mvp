@@ -33,6 +33,10 @@ type PayoutStatus = (typeof payoutStatusValues)[number];
 
 app.use(cors());
 app.use(express.json());
+app.use((_req, _res, next) => {
+  sanitizeInMemoryState();
+  next();
+});
 
 type User = {
   id: string;
@@ -267,6 +271,9 @@ type MatchCategory = {
   candidateValues: string[] | undefined;
 };
 
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const users: User[] = [];
 const profiles: Profile[] = [];
 const helpRequests: HelpRequest[] = [];
@@ -355,6 +362,18 @@ function getTrimmedString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isValidId(value: string) {
+  return uuidPattern.test(value);
+}
+
+function isNonEmptyString(value: string) {
+  return value.trim().length > 0;
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function getStringArray(value: unknown) {
   if (value === undefined) {
     return undefined;
@@ -406,6 +425,20 @@ function getEnumValue<T extends readonly string[]>(value: unknown, allowedValues
   return typeof value === "string" && allowedValues.includes(value)
     ? (value as T[number])
     : null;
+}
+
+function getValidUserById(userId: string) {
+  return users.find((user) => user.id === userId);
+}
+
+function getValidProfileByUserId(userId: string) {
+  return profiles.find((profile) => profile.userId === userId);
+}
+
+function hasActiveRequest(userId: string) {
+  return helpRequests.some(
+    (request) => request.userId === userId && !isTerminalRequestStatus(request.status)
+  );
 }
 
 function getOverlapCount(valuesA?: string[], valuesB?: string[]) {
@@ -1065,9 +1098,145 @@ function getOperatorEarningsSnapshot(operatorId: string): OperatorEarningsSnapsh
   };
 }
 
+function sanitizeInMemoryState() {
+  const validUsers = new Map<string, User>();
+  users.forEach((user) => {
+    if (!isValidId(user.id)) {
+      return;
+    }
+
+    if (validUsers.has(user.id)) {
+      return;
+    }
+
+    validUsers.set(user.id, {
+      ...user,
+      ...(user.email && isNonEmptyString(user.email)
+        ? { email: user.email.trim() }
+        : {}),
+    });
+  });
+  users.length = 0;
+  users.push(...validUsers.values());
+
+  const validProfiles = new Map<string, Profile>();
+  profiles.forEach((profile) => {
+    if (
+      !isValidId(profile.id) ||
+      !isValidId(profile.userId) ||
+      !isNonEmptyString(profile.displayName) ||
+      !validUsers.has(profile.userId)
+    ) {
+      return;
+    }
+
+    if (validProfiles.has(profile.userId)) {
+      return;
+    }
+
+    validProfiles.set(profile.userId, {
+      ...profile,
+      displayName: profile.displayName.trim(),
+      ...(profile.city && isNonEmptyString(profile.city)
+        ? { city: profile.city.trim() }
+        : {}),
+      ...(profile.bio && isNonEmptyString(profile.bio)
+        ? { bio: profile.bio.trim() }
+        : {}),
+      ...(profile.countryCode && isNonEmptyString(profile.countryCode)
+        ? { countryCode: profile.countryCode.trim() }
+        : {}),
+    });
+  });
+  profiles.length = 0;
+  profiles.push(...validProfiles.values());
+
+  const validRequestIds = new Set<string>();
+  const sanitizedRequests = helpRequests.filter((request) => {
+    if (
+      !isValidId(request.id) ||
+      validRequestIds.has(request.id) ||
+      !isValidId(request.userId) ||
+      !validProfiles.has(request.userId)
+    ) {
+      return false;
+    }
+
+    if (request.selectedOperatorId) {
+      if (
+        !isValidId(request.selectedOperatorId) ||
+        !validProfiles.has(request.selectedOperatorId)
+      ) {
+        return false;
+      }
+    }
+
+    validRequestIds.add(request.id);
+    request.userId = request.userId.trim();
+    if (request.selectedOperatorId) {
+      request.selectedOperatorId = request.selectedOperatorId.trim();
+    }
+    if (request.description) {
+      request.description = request.description.trim();
+      if (!request.description) {
+        delete request.description;
+      }
+    }
+    return true;
+  });
+  helpRequests.length = 0;
+  helpRequests.push(...sanitizedRequests);
+
+  const validNominationKeys = new Set<string>();
+  const sanitizedNominations = operatorNominations.filter((nomination) => {
+    const nominationKey = `${nomination.requestId}:${nomination.operatorId}`;
+
+    if (
+      !isValidId(nomination.id) ||
+      !validRequestIds.has(nomination.requestId) ||
+      !isValidId(nomination.operatorId) ||
+      !validProfiles.has(nomination.operatorId) ||
+      validNominationKeys.has(nominationKey)
+    ) {
+      return false;
+    }
+
+    validNominationKeys.add(nominationKey);
+    return true;
+  });
+  operatorNominations.length = 0;
+  operatorNominations.push(...sanitizedNominations);
+
+  const validReviewRequestIds = new Set<string>();
+  const sanitizedReviews = sessionReviews.filter((review) => {
+    if (
+      !validRequestIds.has(review.requestId) ||
+      !isValidId(review.travelerUserId) ||
+      !validProfiles.has(review.travelerUserId) ||
+      validReviewRequestIds.has(review.requestId)
+    ) {
+      return false;
+    }
+
+    const request = helpRequests.find((item) => item.id === review.requestId);
+
+    if (!request || request.userId !== review.travelerUserId) {
+      return false;
+    }
+
+    validReviewRequestIds.add(review.requestId);
+    return true;
+  });
+  sessionReviews.length = 0;
+  sessionReviews.push(...sanitizedReviews);
+}
+
 function seedMockProfiles() {
   users.length = 0;
   profiles.length = 0;
+  helpRequests.length = 0;
+  operatorNominations.length = 0;
+  sessionReviews.length = 0;
 
   const seeded = seedProfiles.map(({ email, profile }) => {
     const user: User = {
@@ -1097,6 +1266,8 @@ function seedMockProfiles() {
   };
 }
 
+sanitizeInMemoryState();
+
 app.get("/health", (_req, res) => {
   res.json({
     ok: true,
@@ -1110,6 +1281,14 @@ app.post("/users", (req, res) => {
 
   if (!email) {
     return res.status(400).json({ error: "email is required" });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: "email must be a valid email address" });
+  }
+
+  if (users.some((user) => user.email?.toLowerCase() === email.toLowerCase())) {
+    return res.status(409).json({ error: "A user with this email already exists" });
   }
 
   const user: User = {
@@ -1160,8 +1339,20 @@ app.post("/profiles", (req, res) => {
     return res.status(400).json({ error: "userId is required" });
   }
 
+  if (!isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
+  }
+
   if (!displayName) {
     return res.status(400).json({ error: "displayName is required" });
+  }
+
+  if (!getValidUserById(userId)) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  if (getValidProfileByUserId(userId)) {
+    return res.status(409).json({ error: "A profile already exists for this user" });
   }
 
   if (isAvailable === null) {
@@ -1228,7 +1419,13 @@ app.post("/profiles", (req, res) => {
 });
 
 app.get("/profiles/:userId", (req, res) => {
-  const profile = profiles.find((p) => p.userId === req.params.userId);
+  const userId = getTrimmedString(req.params.userId);
+
+  if (!userId || !isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
+  }
+
+  const profile = profiles.find((p) => p.userId === userId);
 
   if (!profile) {
     return res.status(404).json({ error: "Profile not found" });
@@ -1253,6 +1450,10 @@ app.post("/requests/match", (req, res) => {
     return res.status(400).json({ error: "userId is required" });
   }
 
+  if (!isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
+  }
+
   if (!intent) {
     return res.status(400).json({ error: "intent is required" });
   }
@@ -1265,6 +1466,17 @@ app.post("/requests/match", (req, res) => {
 
   if (!currentProfile) {
     return res.status(404).json({ error: "Profile not found" });
+  }
+
+  const existingActiveRequest = helpRequests.find(
+    (request) => request.userId === userId && !isTerminalRequestStatus(request.status)
+  );
+
+  if (existingActiveRequest) {
+    return res.status(409).json({
+      error: "This traveler already has an active request",
+      request: existingActiveRequest,
+    });
   }
 
   const helpRequest = createHelpRequest({
@@ -1286,10 +1498,20 @@ app.post("/requests/match", (req, res) => {
 });
 
 app.post("/requests/:requestId/expand", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
+
+  const request = getRequestById(requestId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
+  }
+
+  if (!getValidProfileByUserId(request.userId)) {
+    return res.status(400).json({ error: "Request traveler is invalid" });
   }
 
   applyRequestExpiry(request);
@@ -1318,10 +1540,24 @@ app.post("/requests/:requestId/expand", (req, res) => {
 });
 
 app.post("/requests/:requestId/retry", (req, res) => {
-  const existingRequest = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
+
+  const existingRequest = getRequestById(requestId);
 
   if (!existingRequest) {
     return res.status(404).json({ error: "Request not found" });
+  }
+
+  if (!getValidProfileByUserId(existingRequest.userId)) {
+    return res.status(400).json({ error: "Request traveler is invalid" });
+  }
+
+  if (hasActiveRequest(existingRequest.userId)) {
+    return res.status(409).json({ error: "This traveler already has an active request" });
   }
 
   const newRequest = createHelpRequest({
@@ -1343,9 +1579,14 @@ app.post("/requests/:requestId/retry", (req, res) => {
 });
 
 app.post("/requests/:requestId/respond", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
+  const request = requestId && isValidId(requestId) ? getRequestById(requestId) : undefined;
   const operatorId = getTrimmedString(req.body?.operatorId);
   const action = getEnumValue(req.body?.action, ["accept", "decline"] as const);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -1353,6 +1594,10 @@ app.post("/requests/:requestId/respond", (req, res) => {
 
   if (!operatorId) {
     return res.status(400).json({ error: "operatorId is required" });
+  }
+
+  if (!isValidId(operatorId)) {
+    return res.status(400).json({ error: "operatorId must be a valid id" });
   }
 
   if (!action) {
@@ -1367,8 +1612,24 @@ app.post("/requests/:requestId/respond", (req, res) => {
     return res.status(404).json({ error: "Nomination not found" });
   }
 
+  if (!["nominated", "accepted"].includes(request.status)) {
+    return res.status(400).json({ error: "Request cannot receive responses in its current state" });
+  }
+
   if (request.selectedOperatorId) {
     return res.status(400).json({ error: "Request already has a selected operator" });
+  }
+
+  if (nomination.status === "declined" && action === "decline") {
+    return res.status(409).json({ error: "This nomination was already declined" });
+  }
+
+  if (nomination.status === "accepted" && action === "accept") {
+    return res.status(409).json({ error: "This nomination was already accepted" });
+  }
+
+  if (nomination.status === "expired") {
+    return res.status(400).json({ error: "This nomination has expired" });
   }
 
   nomination.status = action === "accept" ? "accepted" : "declined";
@@ -1382,9 +1643,14 @@ app.post("/requests/:requestId/respond", (req, res) => {
 });
 
 app.post("/requests/:requestId/start", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
+  const request = requestId && isValidId(requestId) ? getRequestById(requestId) : undefined;
   const operatorId = getTrimmedString(req.body?.operatorId);
   const userId = getTrimmedString(req.body?.userId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -1396,8 +1662,16 @@ app.post("/requests/:requestId/start", (req, res) => {
     return res.status(400).json({ error: "Refunded requests cannot be started" });
   }
 
+  if (request.status === "in_call") {
+    return res.status(409).json({ error: "Request is already in progress" });
+  }
+
   if (["completed", "cancelled", "expired", "timed_out", "missed"].includes(request.status)) {
     return res.status(400).json({ error: "Request cannot be started in its current state" });
+  }
+
+  if (request.status !== "accepted") {
+    return res.status(400).json({ error: "Request must be accepted before starting" });
   }
 
   if (request.paymentStatus !== "reserved") {
@@ -1410,6 +1684,14 @@ app.post("/requests/:requestId/start", (req, res) => {
 
   if (!operatorId) {
     return res.status(400).json({ error: "operatorId is required" });
+  }
+
+  if (!isValidId(operatorId)) {
+    return res.status(400).json({ error: "operatorId must be a valid id" });
+  }
+
+  if (userId && !isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
   }
 
   if (operatorId !== request.selectedOperatorId) {
@@ -1447,9 +1729,14 @@ app.post("/requests/:requestId/start", (req, res) => {
 });
 
 app.post("/requests/:requestId/reserve", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
+  const request = requestId && isValidId(requestId) ? getRequestById(requestId) : undefined;
   const operatorId = getTrimmedString(req.body?.operatorId);
   const userId = getTrimmedString(req.body?.userId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -1465,16 +1752,32 @@ app.post("/requests/:requestId/reserve", (req, res) => {
     return res.status(400).json({ error: "operatorId is required" });
   }
 
+  if (!isValidId(operatorId)) {
+    return res.status(400).json({ error: "operatorId must be a valid id" });
+  }
+
+  if (userId && !isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
+  }
+
   if (userId && request.userId !== userId) {
     return res.status(403).json({ error: "Request does not belong to this traveler" });
   }
 
-  if (request.paymentStatus !== "quoted") {
-    return res.status(400).json({ error: "Request must be quoted before reserving" });
+  if (!getValidProfileByUserId(operatorId)) {
+    return res.status(404).json({ error: "Operator profile not found" });
   }
 
   if (request.selectedOperatorId && request.selectedOperatorId !== operatorId) {
     return res.status(400).json({ error: "Request is already reserved for another operator" });
+  }
+
+  if (request.selectedOperatorId === operatorId && request.paymentStatus === "reserved") {
+    return res.status(409).json({ error: "Request is already reserved for this operator" });
+  }
+
+  if (request.paymentStatus !== "quoted") {
+    return res.status(400).json({ error: "Request must be quoted before reserving" });
   }
 
   const nomination = operatorNominations.find(
@@ -1494,9 +1797,14 @@ app.post("/requests/:requestId/reserve", (req, res) => {
 });
 
 app.post("/requests/:requestId/complete", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
+  const request = requestId && isValidId(requestId) ? getRequestById(requestId) : undefined;
   const operatorId = getTrimmedString(req.body?.operatorId);
   const userId = getTrimmedString(req.body?.userId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -1512,6 +1820,14 @@ app.post("/requests/:requestId/complete", (req, res) => {
 
   if (operatorId && operatorId !== request.selectedOperatorId) {
     return res.status(400).json({ error: "operatorId must match the selected operator" });
+  }
+
+  if (operatorId && !isValidId(operatorId)) {
+    return res.status(400).json({ error: "operatorId must be a valid id" });
+  }
+
+  if (userId && !isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
   }
 
   if (
@@ -1538,7 +1854,13 @@ app.post("/requests/:requestId/complete", (req, res) => {
 });
 
 app.post("/requests/:requestId/cancel", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
+
+  const request = getRequestById(requestId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -1557,8 +1879,13 @@ app.post("/requests/:requestId/cancel", (req, res) => {
 });
 
 app.post("/requests/:requestId/no-show", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
+  const request = requestId && isValidId(requestId) ? getRequestById(requestId) : undefined;
   const operatorId = getTrimmedString(req.body?.operatorId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -1572,6 +1899,21 @@ app.post("/requests/:requestId/no-show", (req, res) => {
     return res.status(400).json({ error: "operatorId is required" });
   }
 
+  if (!isValidId(operatorId)) {
+    return res.status(400).json({ error: "operatorId must be a valid id" });
+  }
+
+  if (
+    request.selectedOperatorId
+      ? request.selectedOperatorId !== operatorId
+      : !getNominationsByRequestId(request.id).some(
+          (nomination) =>
+            nomination.operatorId === operatorId && nomination.status === "accepted"
+        )
+  ) {
+    return res.status(400).json({ error: "operatorId must belong to the active accepted operator" });
+  }
+
   request.status = "missed";
   request.lastFailureReason = "operator_no_show";
   request.endedAt = new Date().toISOString();
@@ -1580,10 +1922,20 @@ app.post("/requests/:requestId/no-show", (req, res) => {
 });
 
 app.post("/requests/:requestId/refund", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
+
+  const request = getRequestById(requestId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
+  }
+
+  if (request.paymentStatus === "refunded") {
+    return res.status(409).json({ error: "Request is already refunded" });
   }
 
   request.paymentStatus = "refunded";
@@ -1591,7 +1943,13 @@ app.post("/requests/:requestId/refund", (req, res) => {
 });
 
 app.get("/requests/:requestId", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
+
+  const request = getRequestById(requestId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -1601,8 +1959,18 @@ app.get("/requests/:requestId", (req, res) => {
 });
 
 app.get("/requests/:requestId/responses", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
   const userId = getTrimmedString(req.query.userId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
+
+  if (userId && !isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
+  }
+
+  const request = getRequestById(requestId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -1619,8 +1987,18 @@ app.get("/requests/:requestId/responses", (req, res) => {
 });
 
 app.get("/requests/:requestId/summary", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
   const userId = getTrimmedString(req.query.userId);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
+
+  if (userId && !isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
+  }
+
+  const request = getRequestById(requestId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -1632,10 +2010,16 @@ app.get("/requests/:requestId/summary", (req, res) => {
 });
 
 app.post("/requests/:requestId/review", (req, res) => {
-  const request = getRequestById(req.params.requestId);
+  const requestId = getTrimmedString(req.params.requestId);
   const userId = getTrimmedString(req.body?.userId);
   const comment = getTrimmedString(req.body?.comment);
   const rating = getNumber(req.body?.rating);
+
+  if (!requestId || !isValidId(requestId)) {
+    return res.status(400).json({ error: "requestId must be a valid id" });
+  }
+
+  const request = getRequestById(requestId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -1643,6 +2027,10 @@ app.post("/requests/:requestId/review", (req, res) => {
 
   if (!userId) {
     return res.status(400).json({ error: "userId is required" });
+  }
+
+  if (!isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
   }
 
   if (request.userId !== userId) {
@@ -1653,7 +2041,13 @@ app.post("/requests/:requestId/review", (req, res) => {
     return res.status(400).json({ error: "Request must be completed before review" });
   }
 
-  if (rating === undefined || rating === null || rating < 1 || rating > 5) {
+  if (
+    rating === undefined ||
+    rating === null ||
+    !Number.isInteger(rating) ||
+    rating < 1 ||
+    rating > 5
+  ) {
     return res.status(400).json({ error: "rating must be between 1 and 5" });
   }
 
@@ -1683,6 +2077,14 @@ app.post("/requests/:requestId/review", (req, res) => {
 app.get("/users/:userId/requests/completed", (req, res) => {
   const userId = getTrimmedString(req.params.userId);
 
+  if (!userId || !isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
+  }
+
+  if (!getValidProfileByUserId(userId)) {
+    return res.status(404).json({ error: "Profile not found" });
+  }
+
   res.json({
     requests: helpRequests
       .filter((request) => request.userId === userId && request.status === "completed")
@@ -1697,6 +2099,14 @@ app.get("/users/:userId/requests/completed", (req, res) => {
 
 app.get("/operators/:userId/sessions/completed", (req, res) => {
   const userId = getTrimmedString(req.params.userId);
+
+  if (!userId || !isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
+  }
+
+  if (!getValidProfileByUserId(userId)) {
+    return res.status(404).json({ error: "Operator profile not found" });
+  }
 
   res.json({
     sessions: helpRequests
@@ -1716,8 +2126,12 @@ app.get("/operators/:userId/sessions/completed", (req, res) => {
 app.get("/operators/:operatorId/earnings", (req, res) => {
   const operatorId = getTrimmedString(req.params.operatorId);
 
-  if (!operatorId) {
-    return res.status(400).json({ error: "operatorId is required" });
+  if (!operatorId || !isValidId(operatorId)) {
+    return res.status(400).json({ error: "operatorId must be a valid id" });
+  }
+
+  if (!getValidProfileByUserId(operatorId)) {
+    return res.status(404).json({ error: "Operator profile not found" });
   }
 
   res.json(getOperatorEarningsSnapshot(operatorId));
@@ -1726,8 +2140,8 @@ app.get("/operators/:operatorId/earnings", (req, res) => {
 app.get("/operator/requests", (req, res) => {
   const operatorId = getTrimmedString(req.query.operatorId);
 
-  if (!operatorId) {
-    return res.status(400).json({ error: "operatorId is required" });
+  if (!operatorId || !isValidId(operatorId)) {
+    return res.status(400).json({ error: "operatorId must be a valid id" });
   }
 
   const operatorProfile = profiles.find((profile) => profile.userId === operatorId);
@@ -1742,7 +2156,13 @@ app.get("/operator/requests", (req, res) => {
 });
 
 app.get("/match/:userId", (req, res) => {
-  const currentProfile = profiles.find((profile) => profile.userId === req.params.userId);
+  const userId = getTrimmedString(req.params.userId);
+
+  if (!userId || !isValidId(userId)) {
+    return res.status(400).json({ error: "userId must be a valid id" });
+  }
+
+  const currentProfile = profiles.find((profile) => profile.userId === userId);
 
   if (!currentProfile) {
     return res.status(404).json({ error: "Profile not found" });
