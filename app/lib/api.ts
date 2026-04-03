@@ -19,6 +19,7 @@ export const helpRequestStatusOptions = [
 ] as const;
 export const nominationStatusOptions = ["pending", "accepted", "declined", "expired"] as const;
 export const paymentStatusOptions = ["none", "quoted", "reserved", "paid", "refunded"] as const;
+export const payoutStatusOptions = ["pending", "available", "paid"] as const;
 
 export type Role = (typeof roleOptions)[number];
 export type HelpIntent = (typeof helpIntentOptions)[number];
@@ -26,6 +27,7 @@ export type Urgency = (typeof urgencyOptions)[number];
 export type HelpRequestStatus = (typeof helpRequestStatusOptions)[number];
 export type NominationStatus = (typeof nominationStatusOptions)[number];
 export type PaymentStatus = (typeof paymentStatusOptions)[number];
+export type PayoutStatus = (typeof payoutStatusOptions)[number];
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
@@ -97,6 +99,10 @@ export type HelpRequest = {
   expiresAt?: string;
   quotedAmount?: number;
   currency: string;
+  completedAt?: string;
+  platformFeePercent?: number;
+  operatorEarnings?: number;
+  payoutStatus?: PayoutStatus;
   retryCount: number;
   lastFailureReason?: string;
   paymentStatus: PaymentStatus;
@@ -270,6 +276,30 @@ export type CompletedOperatorSessionItem = {
   rating?: number;
 };
 
+export type OperatorEarningsTransaction = {
+  requestId: string;
+  travelerName: string;
+  intent: HelpIntent;
+  completedAt: string | null;
+  grossAmount: number;
+  netAmount: number;
+  payoutStatus: PayoutStatus;
+  rating: number | null;
+};
+
+export type OperatorEarningsSnapshot = {
+  operatorId: string;
+  currency: "USD";
+  grossEarnings: number;
+  netEarnings: number;
+  pendingEarnings: number;
+  paidOutEarnings: number;
+  completedSessions: number;
+  averageRating: number | null;
+  reviewCount: number;
+  recentTransactions: OperatorEarningsTransaction[];
+};
+
 type CompletedTravelerRequestsResponse = {
   requests: CompletedTravelerRequestItem[];
 };
@@ -277,6 +307,8 @@ type CompletedTravelerRequestsResponse = {
 type CompletedOperatorSessionsResponse = {
   sessions: CompletedOperatorSessionItem[];
 };
+
+type OperatorEarningsResponse = OperatorEarningsSnapshot;
 
 export type OperatorInboxItem = {
   requestId: string;
@@ -464,5 +496,11 @@ export function getCompletedTravelerRequests(userId: string) {
 export function getCompletedOperatorSessions(userId: string) {
   return request<CompletedOperatorSessionsResponse>(
     `/operators/${encodeURIComponent(userId)}/sessions/completed`
+  );
+}
+
+export function getOperatorEarnings(operatorId: string) {
+  return request<OperatorEarningsResponse>(
+    `/operators/${encodeURIComponent(operatorId)}/earnings`
   );
 }

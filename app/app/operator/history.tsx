@@ -71,6 +71,10 @@ export default function OperatorHistoryScreen() {
                 <Button title="Refresh history" onPress={() => void loadHistory()} />
             </View>
 
+            <View style={{ marginBottom: 16 }}>
+                <Button title="View earnings" onPress={() => router.push("/operator/earnings")} />
+            </View>
+
             {error ? <Text style={{ marginBottom: 16 }}>ERROR: {error}</Text> : null}
 
             {!error && items.length === 0 ? (
@@ -96,6 +100,9 @@ export default function OperatorHistoryScreen() {
                     <Text style={{ marginBottom: 4 }}>
                         Payment: {item.paymentStatus}
                     </Text>
+                    {item.paymentStatus === "paid" ? (
+                        <Text style={{ marginBottom: 4 }}>Included in earnings</Text>
+                    ) : null}
                     <Text>
                         {item.rating !== undefined ? `★ ${item.rating}${item.review?.comment ? ` • ${item.review.comment}` : ""}` : "No review yet"}
                     </Text>

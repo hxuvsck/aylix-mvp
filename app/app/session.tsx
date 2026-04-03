@@ -279,10 +279,16 @@ export default function SessionScreen() {
                 </View>
             ) : null}
 
-            {stage === "completed" ? (
+            {stage === "completed" && !summary.hasReview ? (
                 <View style={{ marginBottom: 12 }}>
                     <Button title="Leave review" onPress={handleLeaveReview} />
                 </View>
+            ) : null}
+
+            {stage === "completed" && summary.hasReview ? (
+                <Text style={{ marginBottom: 12 }}>
+                    Review submitted
+                </Text>
             ) : null}
 
             <Button

@@ -10,7 +10,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 - Expo app for React Native and web
 - Expo Router for screen routing
-- Screens: `onboarding`, `profile`, `request`, `operator/inbox`, `operator/request`, `session`, `call`, `review`, `history`, `operator/history`
+- Screens: `onboarding`, `profile`, `request`, `operator/inbox`, `operator/request`, `session`, `call`, `review`, `history`, `operator/history`, `operator/earnings`
 - API access centralized in `app/lib/api.ts`
 - Local profile, latest review, and trust persistence via AsyncStorage in `app/lib/storage.ts`
 - Onboarding uses `ScrollView` to stay usable on smaller screens and with the keyboard open
@@ -41,6 +41,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
   - `GET /operator/requests`
   - `GET /users/:userId/requests/completed`
   - `GET /operators/:userId/sessions/completed`
+  - `GET /operators/:operatorId/earnings`
 - Input validation for user creation, profile availability, role-based profile fields, and request payloads
 
 ## Core User Flow
@@ -68,9 +69,10 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 21. The user can then enter the review screen and submit a lightweight review.
 22. Review submission is saved against the completed request and updates local trust for the reviewed user.
 23. Traveler and operator can both view completed session history from their side of the app.
-24. The user returns to the profile screen and can see review memory still reflected in the app.
-25. On later launches, the app goes straight to the profile screen if saved profile data exists.
-26. The user can reset the saved profile and return to onboarding.
+24. Operators can view a lightweight earnings snapshot derived from completed paid sessions.
+25. The user returns to the profile screen and can see review memory still reflected in the app.
+26. On later launches, the app goes straight to the profile screen if saved profile data exists.
+27. The user can reset the saved profile and return to onboarding.
 
 ## What Currently Works
 
@@ -105,7 +107,9 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Review submit continues to update a local per-user trust snapshot using the latest rating
 - Review now acts as the post-session entry point instead of completing the request itself
 - Traveler history now lists completed sessions with operator summary, payment state, completion time, and review status
-- Operator history now lists completed sessions with traveler summary, quoted amount, and rating when available
+- Operator history now lists completed sessions with traveler summary, quoted amount, rating, and paid-session context when available
+- Request completion now finalizes lightweight accounting fields such as `completedAt`, `platformFeePercent`, `operatorEarnings`, and `payoutStatus`
+- Operator earnings screen now shows net earnings, gross earnings, pending, paid out, completed sessions, average rating, and recent transactions
 - App remembers the created profile between launches
 - App auto-routes to onboarding or profile based on saved state
 - User can clear saved profile and restart the flow
@@ -136,6 +140,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Active session state is still a placeholder layer and not a real live-call transport
 - Reviews are single-submit only and do not support editing, deletion, or moderation
 - Completed session history is lightweight and does not include advanced filtering or analytics
+- Earnings are mock-only snapshots derived from completed paid requests, without real payouts or reconciliation
 - API validation is still intentionally light beyond required fields and array shape checks
 - Frontend profile state is stored only on-device
 
@@ -157,6 +162,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Adding operator inbox and explicit traveler selection makes the two-sided flow easier to understand without needing a full marketplace backend
 - A shared session placeholder makes the active state clearer without forcing a premature realtime architecture
 - A small completed-history layer makes the product loop feel inspectable without adding a heavy analytics or ledger system
+- Lightweight earnings visibility helps the operator-side flow feel commercially complete without adding real payment infrastructure
 - Simpler routing decisions reduce friction during iteration
 - Stabilizing screen load behavior matters as much as feature work in small MVP flows
 - Small copy and usability improvements can make the app feel more like a product without changing the architecture
@@ -171,12 +177,12 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding, profile memory, local readiness, intent-based role matching, operator response handling, traveler selection, reservation, session handoff, active session placeholder state, session locking, review submission, completed session history, local trust, simulated call states, and the review loop are working in stable MVP form. The app now has a credible two-sided request-to-session backbone with an economic placeholder layer and a lightweight closed-loop history layer.
+Core onboarding, profile memory, local readiness, intent-based role matching, operator response handling, traveler selection, reservation, session handoff, active session placeholder state, session locking, review submission, completed session history, operator earnings snapshots, local trust, simulated call states, and the review loop are working in stable MVP form. The app now has a credible two-sided request-to-session backbone with an economic placeholder layer and lightweight post-session visibility for both travelers and operators.
 
 ## Next Steps
 
 - Refine rule-based matching quality within the current deterministic system
-- Continue tightening request lifecycle, operator response handling, reservation, session handoff, active session state, session locking, trust, review, and history behavior for reliability
+- Continue tightening request lifecycle, operator response handling, reservation, session handoff, active session state, session locking, trust, review, history, and earnings behavior for reliability
 - Improve profile and match presentation without changing the core flow
 - Hold the architecture simple until the current loop feels consistently stable
 
@@ -187,7 +193,7 @@ Build the smallest useful version of the core user loop, make it reliable, and d
 ## System Boundaries
 
 - Reality vs simulation:
-  Profile data, request creation, role-based matching, operator nominations, traveler selection, reservation state, active session state, session locking, and completed history are real within the current app flow. The call layer is simulated and does not provide real audio. Trust and saved profile state are local-only on-device, while request reviews are stored only in the in-memory MVP backend.
+  Profile data, request creation, role-based matching, operator nominations, traveler selection, reservation state, active session state, session locking, completed history, and operator earnings snapshots are real within the current app flow. The call layer is simulated and does not provide real audio. Trust and saved profile state are local-only on-device, while request reviews and accounting snapshots are stored only in the in-memory MVP backend.
 - Single-device limitation:
   The current system behaves as a single-device simulation. There is no shared backend state that synchronizes user activity across devices.
 - Identity limitation:
@@ -197,7 +203,7 @@ Build the smallest useful version of the core user loop, make it reliable, and d
 - Operator system missing:
   The current MVP supports dynamic support roles in matching, but not a separate authenticated operator application or workflow.
 - Platform limitations:
-  There is no full realtime system, no backend persistence, no real payment rail, and no global reputation model.
+  There is no full realtime system, no backend persistence, no real payment rail, no real payout system, and no global reputation model.
 - Purpose of current system:
   This MVP is designed to validate the flow, validate the matching concept, and validate the interaction loop.
 
@@ -213,3 +219,4 @@ Build the smallest useful version of the core user loop, make it reliable, and d
 - Day 23: Reserved Session State & Pre-Call Handoff
 - Day 24: Active Session Placeholder & Post-Call Review Entry
 - Day 25: Review Submission & Completed Session History
+- Day 26: Operator Earnings Snapshot & Final MVP Flow Polish

@@ -93,6 +93,9 @@ export default function HistoryScreen() {
                         Status: {item.status} • {item.paymentStatus}
                     </Text>
                     <Text style={{ marginBottom: 4 }}>
+                        Review: {item.review ? `Submitted • ★ ${item.review.rating}` : "Not reviewed"}
+                    </Text>
+                    <Text style={{ marginBottom: 4 }}>
                         Completed: {item.completedAt ? new Date(item.completedAt).toLocaleString() : "Unknown"}
                     </Text>
                     <Text style={{ marginBottom: 4 }}>

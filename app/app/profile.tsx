@@ -248,6 +248,14 @@ export default function ProfileScreen() {
                     View completed sessions where you were selected as the operator.
                 </Text>
 
+                <Button
+                    title="Operator earnings"
+                    onPress={() => router.push("/operator/earnings")}
+                />
+                <Text style={{ marginTop: 12, marginBottom: 12, color: "#444" }}>
+                    See mock earnings from completed paid operator sessions.
+                </Text>
+
                 {latestReview ? (
                     <View style={{ marginTop: 24, marginBottom: 20 }}>
                         <Text style={{ fontSize: 22, marginBottom: 12 }}>Latest review</Text>

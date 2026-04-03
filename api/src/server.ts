@@ -21,6 +21,7 @@ const helpRequestStatusValues = [
 ] as const;
 const nominationStatusValues = ["pending", "accepted", "declined", "expired"] as const;
 const paymentStatusValues = ["none", "quoted", "reserved", "paid", "refunded"] as const;
+const payoutStatusValues = ["pending", "available", "paid"] as const;
 
 type Role = (typeof roleValues)[number];
 type HelpIntent = (typeof helpIntentValues)[number];
@@ -28,6 +29,7 @@ type Urgency = (typeof urgencyValues)[number];
 type HelpRequestStatus = (typeof helpRequestStatusValues)[number];
 type NominationStatus = (typeof nominationStatusValues)[number];
 type PaymentStatus = (typeof paymentStatusValues)[number];
+type PayoutStatus = (typeof payoutStatusValues)[number];
 
 app.use(cors());
 app.use(express.json());
@@ -82,6 +84,10 @@ type HelpRequest = {
   expiresAt?: string;
   quotedAmount?: number;
   currency: string;
+  completedAt?: string;
+  platformFeePercent?: number;
+  operatorEarnings?: number;
+  payoutStatus?: PayoutStatus;
   retryCount: number;
   lastFailureReason?: string;
   paymentStatus: PaymentStatus;
@@ -229,6 +235,30 @@ type CompletedOperatorSessionItem = {
     createdAt: string;
   };
   rating?: number;
+};
+
+type OperatorEarningsTransaction = {
+  requestId: string;
+  travelerName: string;
+  intent: HelpIntent;
+  completedAt: string | null;
+  grossAmount: number;
+  netAmount: number;
+  payoutStatus: PayoutStatus;
+  rating: number | null;
+};
+
+type OperatorEarningsSnapshot = {
+  operatorId: string;
+  currency: "USD";
+  grossEarnings: number;
+  netEarnings: number;
+  pendingEarnings: number;
+  paidOutEarnings: number;
+  completedSessions: number;
+  averageRating: number | null;
+  reviewCount: number;
+  recentTransactions: OperatorEarningsTransaction[];
 };
 
 type MatchCategory = {
@@ -599,6 +629,10 @@ function getReviewByRequestId(requestId: string) {
   return sessionReviews.find((review) => review.requestId === requestId);
 }
 
+function getCompletedTimestamp(request: HelpRequest) {
+  return request.completedAt ?? request.endedAt ?? null;
+}
+
 function isTerminalRequestStatus(status: HelpRequestStatus) {
   return ["completed", "cancelled", "expired", "timed_out", "missed"].includes(status);
 }
@@ -808,7 +842,7 @@ function getReservedSessionSummary(
     paymentStatus: request.paymentStatus,
     ...(request.selectedOperatorId ? { selectedOperatorId: request.selectedOperatorId } : {}),
     ...(request.startedAt ? { startedAt: request.startedAt } : {}),
-    ...(request.endedAt ? { completedAt: request.endedAt } : {}),
+    ...(getCompletedTimestamp(request) ? { completedAt: getCompletedTimestamp(request)! } : {}),
     traveler: {
       userId: request.userId,
       displayName: travelerProfile?.displayName || "Traveler",
@@ -863,12 +897,13 @@ function getCompletedTravelerRequestItem(
       ? null
       : profiles.find((profile) => profile.userId === request.selectedOperatorId) ?? null;
   const review = getReviewByRequestId(request.id);
+  const completedAt = getCompletedTimestamp(request);
   const durationMinutes =
-    request.startedAt && request.endedAt
+    request.startedAt && completedAt
       ? Math.max(
           1,
           Math.round(
-            (new Date(request.endedAt).getTime() -
+            (new Date(completedAt).getTime() -
               new Date(request.startedAt).getTime()) /
               60000
           )
@@ -896,7 +931,7 @@ function getCompletedTravelerRequestItem(
     ...(durationMinutes !== undefined ? { durationMinutes } : {}),
     locationSummary: travelerProfile?.city || "Location not set",
     intent: request.intent,
-    ...(request.endedAt ? { completedAt: request.endedAt } : {}),
+    ...(completedAt ? { completedAt } : {}),
     ...(review
       ? {
           review: {
@@ -934,10 +969,14 @@ function getCompletedOperatorSessionItem(
             displayName: operatorProfile.displayName,
           },
     ...(request.quotedAmount !== undefined ? { quotedAmount: request.quotedAmount } : {}),
-    ...(request.quotedAmount !== undefined ? { earnedAmount: request.quotedAmount } : {}),
+    ...(request.operatorEarnings !== undefined
+      ? { earnedAmount: request.operatorEarnings }
+      : request.quotedAmount !== undefined
+        ? { earnedAmount: Number((request.quotedAmount * 0.8).toFixed(2)) }
+        : {}),
     currency: request.currency,
     paymentStatus: request.paymentStatus,
-    ...(request.endedAt ? { completedAt: request.endedAt } : {}),
+    ...(getCompletedTimestamp(request) ? { completedAt: getCompletedTimestamp(request)! } : {}),
     intent: request.intent,
     locationSummary: travelerProfile?.city || "Location not set",
     ...(review
@@ -950,6 +989,79 @@ function getCompletedOperatorSessionItem(
           rating: review.rating,
         }
       : {}),
+  };
+}
+
+function getOperatorEarningsSnapshot(operatorId: string): OperatorEarningsSnapshot {
+  const completedRequests = helpRequests
+    .filter(
+      (request) =>
+        request.selectedOperatorId === operatorId &&
+        request.status === "completed" &&
+        request.paymentStatus === "paid"
+    )
+    .map((request) => {
+      const travelerProfile = profiles.find((profile) => profile.userId === request.userId);
+      const review = getReviewByRequestId(request.id);
+      const grossAmount = request.quotedAmount ?? 0;
+      const platformFeePercent = request.platformFeePercent ?? 20;
+      const netAmount =
+        request.operatorEarnings ?? Number((grossAmount * ((100 - platformFeePercent) / 100)).toFixed(2));
+      const payoutStatus = request.payoutStatus ?? "available";
+
+      return {
+        requestId: request.id,
+        travelerName: travelerProfile?.displayName || "Traveler",
+        intent: request.intent,
+        completedAt: getCompletedTimestamp(request),
+        grossAmount,
+        netAmount,
+        payoutStatus,
+        rating: review?.rating ?? null,
+      };
+    })
+    .sort((a, b) => {
+      const aTime = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+      const bTime = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+      return bTime - aTime;
+    });
+
+  const grossEarnings = Number(
+    completedRequests.reduce((sum, item) => sum + item.grossAmount, 0).toFixed(2)
+  );
+  const netEarnings = Number(
+    completedRequests.reduce((sum, item) => sum + item.netAmount, 0).toFixed(2)
+  );
+  const pendingEarnings = Number(
+    completedRequests
+      .filter((item) => item.payoutStatus === "pending")
+      .reduce((sum, item) => sum + item.netAmount, 0)
+      .toFixed(2)
+  );
+  const paidOutEarnings = Number(
+    completedRequests
+      .filter((item) => item.payoutStatus === "paid")
+      .reduce((sum, item) => sum + item.netAmount, 0)
+      .toFixed(2)
+  );
+  const ratings = completedRequests
+    .map((item) => item.rating)
+    .filter((rating): rating is number => rating !== null);
+
+  return {
+    operatorId,
+    currency: "USD",
+    grossEarnings,
+    netEarnings,
+    pendingEarnings,
+    paidOutEarnings,
+    completedSessions: completedRequests.length,
+    averageRating:
+      ratings.length > 0
+        ? Number((ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length).toFixed(1))
+        : null,
+    reviewCount: ratings.length,
+    recentTransactions: completedRequests,
   };
 }
 
@@ -1412,9 +1524,15 @@ app.post("/requests/:requestId/complete", (req, res) => {
 
   request.status = "completed";
   request.endedAt = new Date().toISOString();
-  if (["reserved", "paid"].includes(request.paymentStatus)) {
-    request.paymentStatus = "paid";
+  request.completedAt = request.endedAt;
+  request.paymentStatus = "paid";
+  request.platformFeePercent = request.platformFeePercent ?? 20;
+  if (request.quotedAmount !== undefined) {
+    request.operatorEarnings = Number(
+      (request.quotedAmount * ((100 - request.platformFeePercent) / 100)).toFixed(2)
+    );
   }
+  request.payoutStatus = request.payoutStatus ?? "available";
 
   res.json(getRequestState(request));
 });
@@ -1593,6 +1711,16 @@ app.get("/operators/:userId/sessions/completed", (req, res) => {
       )
       .map((request) => getCompletedOperatorSessionItem(request)),
   });
+});
+
+app.get("/operators/:operatorId/earnings", (req, res) => {
+  const operatorId = getTrimmedString(req.params.operatorId);
+
+  if (!operatorId) {
+    return res.status(400).json({ error: "operatorId is required" });
+  }
+
+  res.json(getOperatorEarningsSnapshot(operatorId));
 });
 
 app.get("/operator/requests", (req, res) => {
