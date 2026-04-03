@@ -8,14 +8,26 @@ const PORT = 4000;
 const roleValues = ["guide", "local", "expert", "companion"] as const;
 const helpIntentValues = ["food", "navigation", "translation", "explore", "emergency"] as const;
 const urgencyValues = ["low", "medium", "high"] as const;
-const helpRequestStatusValues = ["open", "nominated", "accepted", "in_call", "completed", "cancelled"] as const;
+const helpRequestStatusValues = [
+  "open",
+  "nominated",
+  "accepted",
+  "in_call",
+  "completed",
+  "cancelled",
+  "expired",
+  "timed_out",
+  "missed",
+] as const;
 const nominationStatusValues = ["pending", "accepted", "declined", "expired"] as const;
+const paymentStatusValues = ["none", "quoted", "reserved", "paid", "refunded"] as const;
 
 type Role = (typeof roleValues)[number];
 type HelpIntent = (typeof helpIntentValues)[number];
 type Urgency = (typeof urgencyValues)[number];
 type HelpRequestStatus = (typeof helpRequestStatusValues)[number];
 type NominationStatus = (typeof nominationStatusValues)[number];
+type PaymentStatus = (typeof paymentStatusValues)[number];
 
 app.use(cors());
 app.use(express.json());
@@ -64,6 +76,15 @@ type HelpRequest = {
   description?: string;
   urgency?: Urgency;
   status: HelpRequestStatus;
+  selectedOperatorId?: string;
+  startedAt?: string;
+  endedAt?: string;
+  expiresAt?: string;
+  quotedAmount?: number;
+  currency: string;
+  retryCount: number;
+  lastFailureReason?: string;
+  paymentStatus: PaymentStatus;
   createdAt: string;
 };
 
@@ -335,6 +356,86 @@ function getRequestMatchResult(helpRequest: HelpRequest, candidateProfile: Profi
   };
 }
 
+function getQuotedAmountForIntent(intent: HelpIntent) {
+  switch (intent) {
+    case "food":
+      return 5;
+    case "navigation":
+      return 5;
+    case "translation":
+      return 8;
+    case "explore":
+      return 10;
+    case "emergency":
+      return 12;
+  }
+}
+
+function getDefaultExpiryTimestamp() {
+  return new Date(Date.now() + 5 * 60 * 1000).toISOString();
+}
+
+function createHelpRequest(input: {
+  userId: string;
+  intent: HelpIntent;
+  description?: string;
+  urgency?: Urgency;
+}): HelpRequest {
+  const helpRequest: HelpRequest = {
+    id: crypto.randomUUID(),
+    userId: input.userId,
+    intent: input.intent,
+    ...(input.description ? { description: input.description } : {}),
+    ...(input.urgency ? { urgency: input.urgency } : {}),
+    status: "open",
+    expiresAt: getDefaultExpiryTimestamp(),
+    quotedAmount: getQuotedAmountForIntent(input.intent),
+    currency: "USD",
+    retryCount: 0,
+    paymentStatus: "quoted",
+    createdAt: new Date().toISOString(),
+  };
+
+  helpRequests.push(helpRequest);
+  return helpRequest;
+}
+
+function getRankedOperatorsForRequest(
+  request: HelpRequest,
+  excludedOperatorIds: string[] = []
+) {
+  const excludedIds = new Set([request.userId, ...excludedOperatorIds]);
+
+  return profiles
+    .filter(
+      (profile) =>
+        !excludedIds.has(profile.userId) && profile.isAvailable !== false
+    )
+    .map((profile) => getRequestMatchResult(request, profile))
+    .sort((a, b) => b.score - a.score);
+}
+
+function createNominationsForRequest(request: HelpRequest, matches: MatchResult[], limit = 3) {
+  const nominations = matches.slice(0, limit).map((match) => {
+    const nomination: OperatorNomination = {
+      id: crypto.randomUUID(),
+      requestId: request.id,
+      operatorId: match.userId,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+
+    operatorNominations.push(nomination);
+    return nomination;
+  });
+
+  if (nominations.length > 0) {
+    request.status = "nominated";
+  }
+
+  return nominations;
+}
+
 function getRequestById(requestId: string) {
   return helpRequests.find((request) => request.id === requestId);
 }
@@ -343,7 +444,40 @@ function getNominationsByRequestId(requestId: string) {
   return operatorNominations.filter((nomination) => nomination.requestId === requestId);
 }
 
+function isTerminalRequestStatus(status: HelpRequestStatus) {
+  return ["completed", "cancelled", "expired", "timed_out", "missed"].includes(status);
+}
+
+function applyRequestExpiry(request: HelpRequest) {
+  if (!request.expiresAt || request.startedAt || isTerminalRequestStatus(request.status)) {
+    return request;
+  }
+
+  const expiresAtTime = new Date(request.expiresAt).getTime();
+
+  if (Number.isNaN(expiresAtTime) || Date.now() < expiresAtTime) {
+    return request;
+  }
+
+  if (request.status === "nominated") {
+    const hasAcceptedNomination = getNominationsByRequestId(request.id).some(
+      (nomination) => nomination.status === "accepted"
+    );
+
+    request.status = hasAcceptedNomination ? "timed_out" : "expired";
+    request.endedAt = new Date().toISOString();
+    request.lastFailureReason = hasAcceptedNomination ? "no_session_started" : "no_acceptance";
+  } else if (request.status === "accepted") {
+    request.status = "timed_out";
+    request.endedAt = new Date().toISOString();
+    request.lastFailureReason = "no_session_started";
+  }
+
+  return request;
+}
+
 function getRequestState(request: HelpRequest) {
+  applyRequestExpiry(request);
   const nominations = getNominationsByRequestId(request.id);
   const getOperatorsByNominationStatus = (status: NominationStatus) =>
     nominations
@@ -360,11 +494,28 @@ function getRequestState(request: HelpRequest) {
       .filter((match): match is MatchResult => match !== null)
       .sort((a, b) => b.score - a.score);
 
+  const selectedOperator =
+    request.selectedOperatorId === undefined
+      ? null
+      : (() => {
+          const profile = profiles.find((candidate) => candidate.userId === request.selectedOperatorId);
+          return profile ? getRequestMatchResult(request, profile) : null;
+        })();
+
+  const acceptedOperators = getOperatorsByNominationStatus("accepted").filter(
+    (operator) => operator.userId !== request.selectedOperatorId
+  );
+  const pendingOperators =
+    request.selectedOperatorId && request.status === "in_call"
+      ? []
+      : getOperatorsByNominationStatus("pending");
+
   return {
     request,
     nominations,
-    acceptedOperators: getOperatorsByNominationStatus("accepted"),
-    pendingOperators: getOperatorsByNominationStatus("pending"),
+    selectedOperator,
+    acceptedOperators,
+    pendingOperators,
   };
 }
 
@@ -570,47 +721,77 @@ app.post("/requests/match", (req, res) => {
     return res.status(404).json({ error: "Profile not found" });
   }
 
-  const helpRequest: HelpRequest = {
-    id: crypto.randomUUID(),
+  const helpRequest = createHelpRequest({
     userId,
     intent,
     ...(description ? { description } : {}),
     ...(urgency ? { urgency } : {}),
-    status: "open",
-    createdAt: new Date().toISOString(),
-  };
-
-  helpRequests.push(helpRequest);
-
-  const matches = profiles
-    .filter(
-      (profile) =>
-        profile.userId !== currentProfile.userId && profile.isAvailable !== false
-    )
-    .map((profile) => getRequestMatchResult(helpRequest, profile))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
-
-  const nominations = matches.slice(0, 3).map((match) => {
-    const nomination: OperatorNomination = {
-      id: crypto.randomUUID(),
-      requestId: helpRequest.id,
-      operatorId: match.userId,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-    };
-
-    operatorNominations.push(nomination);
-    return nomination;
   });
 
-  if (nominations.length > 0) {
-    helpRequest.status = "nominated";
-  }
+  const matches = getRankedOperatorsForRequest(helpRequest).slice(0, 5);
+  const nominations = createNominationsForRequest(helpRequest, matches, 3);
 
   res.json({
     request: helpRequest,
     nominations,
+    operators: matches.slice(0, 3),
+    matches: matches.slice(0, 3),
+  });
+});
+
+app.post("/requests/:requestId/expand", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  applyRequestExpiry(request);
+
+  if (!["nominated", "accepted", "timed_out", "expired"].includes(request.status)) {
+    return res.status(400).json({ error: "Request cannot expand search in its current state" });
+  }
+
+  const existingOperatorIds = getNominationsByRequestId(request.id).map(
+    (nomination) => nomination.operatorId
+  );
+  const operators = getRankedOperatorsForRequest(request, existingOperatorIds);
+  const newNominations = createNominationsForRequest(request, operators, 3);
+
+  request.retryCount += 1;
+  request.status = "nominated";
+  delete request.endedAt;
+  delete request.lastFailureReason;
+  request.expiresAt = getDefaultExpiryTimestamp();
+
+  res.json({
+    request,
+    nominations: getNominationsByRequestId(request.id),
+    operators: operators.slice(0, 3),
+  });
+});
+
+app.post("/requests/:requestId/retry", (req, res) => {
+  const existingRequest = getRequestById(req.params.requestId);
+
+  if (!existingRequest) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  const newRequest = createHelpRequest({
+    userId: existingRequest.userId,
+    intent: existingRequest.intent,
+    ...(existingRequest.description ? { description: existingRequest.description } : {}),
+    ...(existingRequest.urgency ? { urgency: existingRequest.urgency } : {}),
+  });
+
+  const matches = getRankedOperatorsForRequest(newRequest).slice(0, 5);
+  const nominations = createNominationsForRequest(newRequest, matches, 3);
+
+  res.json({
+    request: newRequest,
+    nominations,
+    operators: matches.slice(0, 3),
     matches: matches.slice(0, 3),
   });
 });
@@ -640,6 +821,10 @@ app.post("/requests/:requestId/respond", (req, res) => {
     return res.status(404).json({ error: "Nomination not found" });
   }
 
+  if (request.selectedOperatorId) {
+    return res.status(400).json({ error: "Request already has a selected operator" });
+  }
+
   nomination.status = action === "accept" ? "accepted" : "declined";
 
   if (action === "accept") {
@@ -649,19 +834,133 @@ app.post("/requests/:requestId/respond", (req, res) => {
   res.json(getRequestState(request));
 });
 
-app.post("/requests/:requestId/status", (req, res) => {
+app.post("/requests/:requestId/start", (req, res) => {
   const request = getRequestById(req.params.requestId);
-  const status = getEnumValue(req.body?.status, helpRequestStatusValues);
+  const operatorId = getTrimmedString(req.body?.operatorId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
   }
 
-  if (!status) {
-    return res.status(400).json({ error: "status is invalid" });
+  applyRequestExpiry(request);
+
+  if (request.status !== "accepted") {
+    return res.status(400).json({ error: "Request must be accepted before starting a session" });
   }
 
-  request.status = status;
+  if (!["reserved", "none"].includes(request.paymentStatus)) {
+    return res.status(400).json({ error: "Request must be reserved before starting" });
+  }
+
+  if (!operatorId) {
+    return res.status(400).json({ error: "operatorId is required" });
+  }
+
+  const nomination = operatorNominations.find(
+    (item) =>
+      item.requestId === request.id &&
+      item.operatorId === operatorId &&
+      item.status === "accepted"
+  );
+
+  if (!nomination) {
+    return res.status(400).json({ error: "Operator must have an accepted nomination" });
+  }
+
+  request.selectedOperatorId = operatorId;
+  request.startedAt = new Date().toISOString();
+  request.status = "in_call";
+  delete request.lastFailureReason;
+  res.json(getRequestState(request));
+});
+
+app.post("/requests/:requestId/reserve", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  applyRequestExpiry(request);
+
+  if (request.status !== "accepted") {
+    return res.status(400).json({ error: "Request must be accepted before reserving" });
+  }
+
+  if (request.paymentStatus !== "quoted") {
+    return res.status(400).json({ error: "Request must be quoted before reserving" });
+  }
+
+  request.paymentStatus = "reserved";
+  res.json(getRequestState(request));
+});
+
+app.post("/requests/:requestId/complete", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  request.status = "completed";
+  request.endedAt = new Date().toISOString();
+  if (request.paymentStatus === "reserved") {
+    request.paymentStatus = "paid";
+  }
+
+  res.json(getRequestState(request));
+});
+
+app.post("/requests/:requestId/cancel", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  applyRequestExpiry(request);
+
+  if (!["open", "nominated", "accepted"].includes(request.status)) {
+    return res.status(400).json({ error: "Request cannot be cancelled in its current state" });
+  }
+
+  request.status = "cancelled";
+  request.endedAt = new Date().toISOString();
+
+  res.json(getRequestState(request));
+});
+
+app.post("/requests/:requestId/no-show", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+  const operatorId = getTrimmedString(req.body?.operatorId);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  if (!["accepted", "in_call"].includes(request.status)) {
+    return res.status(400).json({ error: "No-show can only be reported for accepted or in-call requests" });
+  }
+
+  if (!operatorId) {
+    return res.status(400).json({ error: "operatorId is required" });
+  }
+
+  request.status = "missed";
+  request.lastFailureReason = "operator_no_show";
+  request.endedAt = new Date().toISOString();
+
+  res.json(getRequestState(request));
+});
+
+app.post("/requests/:requestId/refund", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  request.paymentStatus = "refunded";
   res.json(getRequestState(request));
 });
 

@@ -1,7 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, ScrollView, Text, View } from "react-native";
-import { updateRequestStatus } from "../lib/api";
 
 function safeParseArray(value?: string) {
     if (!value) return [];
@@ -63,14 +62,6 @@ export default function CallScreen() {
             clearTimeout(connectTimeout);
         };
     }, [userId, displayName]);
-
-    useEffect(() => {
-        if (!requestId) {
-            return;
-        }
-
-        void updateRequestStatus(requestId, "in_call");
-    }, [requestId]);
 
     useEffect(() => {
         if (callState !== "connected") {

@@ -2,10 +2,17 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, ScrollView, Text, TextInput, View } from "react-native";
 import {
+    cancelRequest,
+    expandRequest,
     getRequestState,
     helpIntentOptions,
     matchHelpRequest,
+    reportNoShow,
+    reserveRequest,
+    retryRequest,
+    startRequestSession,
     urgencyOptions,
+    type HelpRequestStatus,
     type HelpIntent,
     type HelpRequest,
     type Match,
@@ -28,6 +35,8 @@ type MatchWithTrust = Match & {
     reviewCount?: number;
 };
 
+const terminalStatuses: HelpRequestStatus[] = ["completed", "cancelled", "expired", "timed_out", "missed"];
+
 const intentLabels: Record<HelpIntent, string> = {
     food: "Food",
     navigation: "Navigation",
@@ -44,11 +53,25 @@ export default function RequestScreen() {
     const [urgency, setUrgency] = useState<Urgency>("medium");
     const [activeRequest, setActiveRequest] = useState<HelpRequest | null>(null);
     const [nominations, setNominations] = useState<OperatorNomination[]>([]);
+    const [selectedOperator, setSelectedOperator] = useState<MatchWithTrust | null>(null);
     const [acceptedOperators, setAcceptedOperators] = useState<MatchWithTrust[]>([]);
     const [pendingOperators, setPendingOperators] = useState<MatchWithTrust[]>([]);
     const [matchesError, setMatchesError] = useState("");
     const [isMatching, setIsMatching] = useState(false);
     const [hasRequested, setHasRequested] = useState(false);
+
+    const hydrateMatchesWithTrust = async (matches: Match[]) =>
+        Promise.all(
+            matches.map(async (match) => {
+                const trust = await getUserTrust(match.userId);
+
+                return {
+                    ...match,
+                    trustScore: trust.trustScore ?? match.trustScore ?? DEFAULT_TRUST_SCORE,
+                    reviewCount: trust.reviewCount ?? DEFAULT_REVIEW_COUNT,
+                };
+            })
+        );
 
     useEffect(() => {
         const loadProfile = async () => {
@@ -60,7 +83,7 @@ export default function RequestScreen() {
     }, []);
 
     useEffect(() => {
-        if (!activeRequest?.id || activeRequest.status === "completed" || activeRequest.status === "cancelled") {
+        if (!activeRequest?.id || terminalStatuses.includes(activeRequest.status)) {
             return;
         }
 
@@ -68,31 +91,22 @@ export default function RequestScreen() {
             try {
                 const response = await getRequestState(activeRequest.id);
 
-                const [acceptedWithTrust, pendingWithTrust] = await Promise.all([
-                    Promise.all(
-                        response.acceptedOperators.map(async (match) => {
-                            const trust = await getUserTrust(match.userId);
-                            return {
-                                ...match,
-                                trustScore: trust.trustScore ?? match.trustScore ?? DEFAULT_TRUST_SCORE,
-                                reviewCount: trust.reviewCount ?? DEFAULT_REVIEW_COUNT,
-                            };
-                        })
-                    ),
-                    Promise.all(
-                        response.pendingOperators.map(async (match) => {
-                            const trust = await getUserTrust(match.userId);
-                            return {
-                                ...match,
-                                trustScore: trust.trustScore ?? match.trustScore ?? DEFAULT_TRUST_SCORE,
-                                reviewCount: trust.reviewCount ?? DEFAULT_REVIEW_COUNT,
-                            };
-                        })
-                    ),
+                const selectedOperatorResponse = response.selectedOperator;
+                const [selectedWithTrust, acceptedWithTrust, pendingWithTrust] = await Promise.all([
+                    selectedOperatorResponse
+                        ? getUserTrust(selectedOperatorResponse.userId).then((trust) => ({
+                              ...selectedOperatorResponse,
+                              trustScore: trust.trustScore ?? selectedOperatorResponse.trustScore ?? DEFAULT_TRUST_SCORE,
+                              reviewCount: trust.reviewCount ?? DEFAULT_REVIEW_COUNT,
+                          }))
+                        : Promise.resolve(null),
+                    hydrateMatchesWithTrust(response.acceptedOperators),
+                    hydrateMatchesWithTrust(response.pendingOperators),
                 ]);
 
                 setActiveRequest(response.request);
                 setNominations(response.nominations);
+                setSelectedOperator(selectedWithTrust);
                 setAcceptedOperators(acceptedWithTrust);
                 setPendingOperators(pendingWithTrust);
             } catch (err: any) {
@@ -129,20 +143,11 @@ export default function RequestScreen() {
                 urgency,
             });
 
-            const matchesWithTrust = await Promise.all(
-                response.matches.map(async (match) => {
-                    const trust = await getUserTrust(match.userId);
-
-                    return {
-                        ...match,
-                        trustScore: trust.trustScore ?? match.trustScore ?? DEFAULT_TRUST_SCORE,
-                        reviewCount: trust.reviewCount ?? DEFAULT_REVIEW_COUNT,
-                    };
-                })
-            );
+            const matchesWithTrust = await hydrateMatchesWithTrust(response.operators);
 
             setActiveRequest(response.request);
             setNominations(response.nominations);
+            setSelectedOperator(null);
             setAcceptedOperators([]);
             setPendingOperators(matchesWithTrust);
         } catch (err: any) {
@@ -154,7 +159,66 @@ export default function RequestScreen() {
         }
     };
 
-    const handleStartCall = (match: Match) => {
+    const handleExpandSearch = async () => {
+        if (!activeRequest?.id) {
+            return;
+        }
+
+        try {
+            setMatchesError("");
+            const response = await expandRequest(activeRequest.id);
+            const operatorsWithTrust = await hydrateMatchesWithTrust(response.operators);
+
+            setActiveRequest(response.request);
+            setNominations(response.nominations);
+            setSelectedOperator(null);
+            setAcceptedOperators([]);
+            setPendingOperators(operatorsWithTrust);
+        } catch (err: any) {
+            setMatchesError(err.message ?? "Could not expand search.");
+        }
+    };
+
+    const handleRetryRequest = async () => {
+        if (!activeRequest?.id) {
+            return;
+        }
+
+        try {
+            setMatchesError("");
+            const response = await retryRequest(activeRequest.id);
+            const operatorsWithTrust = await hydrateMatchesWithTrust(response.operators);
+
+            setHasRequested(true);
+            setActiveRequest(response.request);
+            setNominations(response.nominations);
+            setSelectedOperator(null);
+            setAcceptedOperators([]);
+            setPendingOperators(operatorsWithTrust);
+        } catch (err: any) {
+            setMatchesError(err.message ?? "Could not retry request.");
+        }
+    };
+
+    const handleStartCall = async (match: Match) => {
+        if (!activeRequest?.id) {
+            return;
+        }
+
+        const response = await startRequestSession(activeRequest.id, match.userId);
+        const trust = await getUserTrust(match.userId);
+        const selectedMatch = {
+            ...match,
+            trustScore: trust.trustScore ?? match.trustScore ?? DEFAULT_TRUST_SCORE,
+            reviewCount: trust.reviewCount ?? DEFAULT_REVIEW_COUNT,
+        };
+
+        setActiveRequest(response.request);
+        setNominations(response.nominations);
+        setSelectedOperator(selectedMatch);
+        setAcceptedOperators([]);
+        setPendingOperators([]);
+
         router.push({
             pathname: "/call",
             params: {
@@ -167,6 +231,90 @@ export default function RequestScreen() {
             },
         });
     };
+
+    const handleReserveAndContinue = async (match: Match) => {
+        if (!activeRequest?.id) {
+            return;
+        }
+
+        try {
+            const response = await reserveRequest(activeRequest.id);
+            setActiveRequest(response.request);
+            setNominations(response.nominations);
+            await handleStartCall(match);
+        } catch (err: any) {
+            setMatchesError(err.message ?? "Could not reserve this session.");
+        }
+    };
+
+    const handleOpenCall = (match: Match) => {
+        router.push({
+            pathname: "/call",
+            params: {
+                requestId: activeRequest?.id ?? "",
+                userId: match.userId,
+                displayName: match.displayName,
+                city: match.city ?? "",
+                score: String(match.score),
+                reasons: JSON.stringify(match.reasons ?? []),
+            },
+        });
+    };
+
+    const handleCancelRequest = async () => {
+        if (!activeRequest?.id) {
+            return;
+        }
+
+        try {
+            const response = await cancelRequest(activeRequest.id);
+            setActiveRequest(response.request);
+            setNominations(response.nominations);
+            setSelectedOperator(null);
+            setAcceptedOperators([]);
+            setPendingOperators([]);
+        } catch (err: any) {
+            setMatchesError(err.message ?? "Could not cancel request.");
+        }
+    };
+
+    const handleReportNoShow = async () => {
+        if (!activeRequest?.id || !selectedOperator?.userId) {
+            return;
+        }
+
+        try {
+            const response = await reportNoShow(activeRequest.id, selectedOperator.userId);
+            setActiveRequest(response.request);
+            setNominations(response.nominations);
+            setSelectedOperator(null);
+            setAcceptedOperators([]);
+            setPendingOperators([]);
+        } catch (err: any) {
+            setMatchesError(err.message ?? "Could not report no-show.");
+        }
+    };
+
+    const terminalMessage =
+        activeRequest?.status === "expired"
+            ? "No operators responded in time."
+            : activeRequest?.status === "timed_out"
+              ? "An operator accepted, but the session did not start in time."
+              : activeRequest?.status === "cancelled"
+                ? "This request was cancelled."
+                : activeRequest?.status === "completed"
+                  ? "This session is complete."
+                  : activeRequest?.status === "missed"
+                    ? "This session was missed."
+                    : "";
+    const isTerminal = activeRequest ? terminalStatuses.includes(activeRequest.status) : false;
+    const canRecover =
+        activeRequest !== null &&
+        ["expired", "timed_out", "missed"].includes(activeRequest.status);
+    const retryLabel =
+        activeRequest && activeRequest.retryCount > 0
+            ? `Expanded search • Retry attempt ${activeRequest.retryCount}`
+            : "";
 
     if (isLoadingProfile) {
         return (
@@ -246,6 +394,72 @@ export default function RequestScreen() {
                     </Text>
                 ) : null}
 
+                {activeRequest?.quotedAmount !== undefined ? (
+                    <Text style={{ marginTop: 8, color: "#444" }}>
+                        Estimated session price: ${activeRequest.quotedAmount} {activeRequest.currency}
+                    </Text>
+                ) : null}
+
+                {activeRequest?.paymentStatus === "reserved" ? (
+                    <Text style={{ marginTop: 8, color: "#444" }}>Session reserved</Text>
+                ) : null}
+
+                {retryLabel ? <Text style={{ marginTop: 8, color: "#444" }}>{retryLabel}</Text> : null}
+
+                {activeRequest && terminalStatuses.includes(activeRequest.status) ? (
+                    <Text style={{ marginTop: 12, marginBottom: 12, color: "#444" }}>{terminalMessage}</Text>
+                ) : null}
+
+                {activeRequest && ["open", "nominated", "accepted"].includes(activeRequest.status) ? (
+                    <View style={{ marginTop: 12 }}>
+                        <Button title="Cancel request" onPress={() => void handleCancelRequest()} />
+                    </View>
+                ) : null}
+
+                {activeRequest?.status === "missed" ? (
+                    <Text style={{ marginTop: 12, marginBottom: 12, color: "#444" }}>
+                        The operator didn’t connect. Try again or find another.
+                    </Text>
+                ) : null}
+
+                {canRecover ? (
+                    <View style={{ marginTop: 12 }}>
+                        <View style={{ marginBottom: 8 }}>
+                            <Button title="Find more operators" onPress={() => void handleExpandSearch()} />
+                        </View>
+                        <Button title="Try again" onPress={() => void handleRetryRequest()} />
+                    </View>
+                ) : null}
+
+                {selectedOperator ? (
+                    <>
+                        <Text style={{ fontSize: 22, marginTop: 24, marginBottom: 12 }}>Active session</Text>
+                        <View style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 10 }}>
+                            <Text style={{ fontSize: 16, marginBottom: 4 }}>{selectedOperator.displayName}</Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Roles: {(selectedOperator.roles ?? []).join(", ") || "None set"}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Capabilities: {(selectedOperator.capabilities ?? []).join(", ") || "None set"}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Trust: ⭐ {selectedOperator.trustScore ?? DEFAULT_TRUST_SCORE} ({selectedOperator.reviewCount ?? DEFAULT_REVIEW_COUNT} reviews)
+                            </Text>
+                            <Text style={{ marginBottom: 12 }}>
+                                Reasons: {(selectedOperator.reasons ?? []).join(", ") || "No reasons available"}
+                            </Text>
+                            {!isTerminal && activeRequest?.status === "in_call" ? (
+                                <View style={{ marginBottom: 8 }}>
+                                    <Button title="Call" onPress={() => handleOpenCall(selectedOperator)} />
+                                </View>
+                            ) : null}
+                            {activeRequest?.status === "in_call" ? (
+                                <Button title="Report no-show" onPress={() => void handleReportNoShow()} />
+                            ) : null}
+                        </View>
+                    </>
+                ) : null}
+
                 <Text style={{ fontSize: 22, marginTop: 24, marginBottom: 12 }}>Accepted operators</Text>
 
                 {matchesError ? <Text style={{ marginBottom: 12 }}>ERROR: {matchesError}</Text> : null}
@@ -271,7 +485,18 @@ export default function RequestScreen() {
                               <Text style={{ marginBottom: 12 }}>
                                   Reasons: {(match.reasons ?? []).join(", ") || "No reasons available"}
                               </Text>
-                              <Button title="Call" onPress={() => handleStartCall(match)} />
+                              {!isTerminal && activeRequest?.paymentStatus === "quoted" ? (
+                                  <View style={{ marginBottom: 8 }}>
+                                      <Button
+                                          title="Confirm & Continue"
+                                          onPress={() => void handleReserveAndContinue(match)}
+                                      />
+                                  </View>
+                              ) : null}
+                              {!isTerminal &&
+                              (activeRequest?.paymentStatus === "reserved" || activeRequest?.paymentStatus === "none") ? (
+                                  <Button title="Call" onPress={() => void handleStartCall(match)} />
+                              ) : null}
                           </View>
                       ))
                     : null}

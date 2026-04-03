@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Button, ScrollView, Text, TextInput, View } from "react-native";
-import { updateRequestStatus } from "../lib/api";
+import { completeRequestSession } from "../lib/api";
 import { saveLatestReview, updateUserTrust } from "../lib/storage";
 
 function getSingleParam(value?: string | string[]) {
@@ -54,7 +54,7 @@ export default function ReviewScreen() {
         });
         await updateUserTrust(userId, rating);
         if (requestId) {
-            await updateRequestStatus(requestId, "completed");
+            await completeRequestSession(requestId);
         }
 
         router.replace("/profile");
