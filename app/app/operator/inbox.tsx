@@ -82,6 +82,10 @@ export default function OperatorInboxScreen() {
                 <Button title="Refresh inbox" onPress={() => void loadInbox()} />
             </View>
 
+            <View style={{ marginBottom: 16 }}>
+                <Button title="Completed sessions" onPress={() => router.push("/operator/history")} />
+            </View>
+
             {error ? <Text style={{ marginBottom: 16 }}>ERROR: {error}</Text> : null}
 
             {!error && requests.length === 0 ? (

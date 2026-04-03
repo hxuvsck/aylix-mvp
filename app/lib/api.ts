@@ -192,10 +192,90 @@ export type ReservedSessionSummary = {
   locationSummary: string;
   viewerRole: "traveler" | "operator" | "other";
   isSelectedOperator: boolean;
+  hasReview: boolean;
+  review?: {
+    rating: number;
+    comment?: string;
+    createdAt: string;
+  };
 };
 
 export type ReservedSessionSummaryResponse = {
   summary: ReservedSessionSummary;
+};
+
+export type SessionReview = {
+  requestId: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  travelerUserId: string;
+  selectedOperatorId?: string;
+};
+
+export type SubmitReviewResponse = {
+  request: RequestStateResponse;
+  review: SessionReview;
+};
+
+export type CompletedTravelerRequestItem = {
+  requestId: string;
+  status: HelpRequestStatus;
+  paymentStatus: PaymentStatus;
+  selectedOperator: {
+    userId: string;
+    displayName: string;
+    city?: string;
+  } | null;
+  traveler: {
+    userId: string;
+    displayName: string;
+  };
+  quotedAmount?: number;
+  currency: string;
+  durationMinutes?: number;
+  locationSummary: string;
+  intent: HelpIntent;
+  completedAt?: string;
+  review?: {
+    rating: number;
+    comment?: string;
+    createdAt: string;
+  };
+};
+
+export type CompletedOperatorSessionItem = {
+  requestId: string;
+  traveler: {
+    userId: string;
+    displayName: string;
+    city?: string;
+  };
+  operator: {
+    userId: string;
+    displayName: string;
+  } | null;
+  quotedAmount?: number;
+  earnedAmount?: number;
+  currency: string;
+  paymentStatus: PaymentStatus;
+  completedAt?: string;
+  intent: HelpIntent;
+  locationSummary: string;
+  review?: {
+    rating: number;
+    comment?: string;
+    createdAt: string;
+  };
+  rating?: number;
+};
+
+type CompletedTravelerRequestsResponse = {
+  requests: CompletedTravelerRequestItem[];
+};
+
+type CompletedOperatorSessionsResponse = {
+  sessions: CompletedOperatorSessionItem[];
 };
 
 export type OperatorInboxItem = {
@@ -363,4 +443,26 @@ export function getRequestResponses(requestId: string, userId?: string) {
 export function getReservedSessionSummary(requestId: string, userId?: string) {
   const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
   return request<ReservedSessionSummaryResponse>(`/requests/${requestId}/summary${query}`);
+}
+
+export function submitReview(
+  requestId: string,
+  input: { userId: string; rating: number; comment?: string }
+) {
+  return request<SubmitReviewResponse>(`/requests/${requestId}/review`, {
+    method: "POST",
+    body: input,
+  });
+}
+
+export function getCompletedTravelerRequests(userId: string) {
+  return request<CompletedTravelerRequestsResponse>(
+    `/users/${encodeURIComponent(userId)}/requests/completed`
+  );
+}
+
+export function getCompletedOperatorSessions(userId: string) {
+  return request<CompletedOperatorSessionsResponse>(
+    `/operators/${encodeURIComponent(userId)}/sessions/completed`
+  );
 }

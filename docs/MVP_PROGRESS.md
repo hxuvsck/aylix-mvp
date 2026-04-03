@@ -10,7 +10,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 - Expo app for React Native and web
 - Expo Router for screen routing
-- Screens: `onboarding`, `profile`, `request`, `operator/inbox`, `operator/request`, `session`, `call`, `review`
+- Screens: `onboarding`, `profile`, `request`, `operator/inbox`, `operator/request`, `session`, `call`, `review`, `history`, `operator/history`
 - API access centralized in `app/lib/api.ts`
 - Local profile, latest review, and trust persistence via AsyncStorage in `app/lib/storage.ts`
 - Onboarding uses `ScrollView` to stay usable on smaller screens and with the keyboard open
@@ -32,12 +32,15 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
   - `POST /requests/:requestId/reserve`
   - `POST /requests/:requestId/start`
   - `POST /requests/:requestId/complete`
+  - `POST /requests/:requestId/review`
   - `POST /requests/:requestId/cancel`
   - `POST /requests/:requestId/expand`
   - `POST /requests/:requestId/retry`
   - `POST /requests/:requestId/no-show`
   - `POST /requests/:requestId/refund`
   - `GET /operator/requests`
+  - `GET /users/:userId/requests/completed`
+  - `GET /operators/:userId/sessions/completed`
 - Input validation for user creation, profile availability, role-based profile fields, and request payloads
 
 ## Core User Flow
@@ -63,10 +66,11 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 19. The active session can be completed explicitly from the shared session screen.
 20. Completing the session moves the request to `completed` and payment state to `paid`.
 21. The user can then enter the review screen and submit a lightweight review.
-22. Review submission updates local trust for the reviewed user.
-23. The user returns to the profile screen and can see review memory still reflected in the app.
-24. On later launches, the app goes straight to the profile screen if saved profile data exists.
-25. The user can reset the saved profile and return to onboarding.
+22. Review submission is saved against the completed request and updates local trust for the reviewed user.
+23. Traveler and operator can both view completed session history from their side of the app.
+24. The user returns to the profile screen and can see review memory still reflected in the app.
+25. On later launches, the app goes straight to the profile screen if saved profile data exists.
+26. The user can reset the saved profile and return to onboarding.
 
 ## What Currently Works
 
@@ -97,8 +101,11 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Completing a reserved request automatically moves its payment placeholder state to `paid`
 - Call screen simulates a basic call lifecycle with connecting and connected states
 - Call screen starts a simple MM:SS timer after the connected state begins
-- Review submit now updates a local per-user trust snapshot using the latest rating
+- Review submit now saves one lightweight review per completed request through the API
+- Review submit continues to update a local per-user trust snapshot using the latest rating
 - Review now acts as the post-session entry point instead of completing the request itself
+- Traveler history now lists completed sessions with operator summary, payment state, completion time, and review status
+- Operator history now lists completed sessions with traveler summary, quoted amount, and rating when available
 - App remembers the created profile between launches
 - App auto-routes to onboarding or profile based on saved state
 - User can clear saved profile and restart the flow
@@ -127,6 +134,8 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Operator identity still depends on the saved local profile because there is no auth layer
 - Reserved-session handoff is a lightweight state transition and not yet a true pre-call coordination layer
 - Active session state is still a placeholder layer and not a real live-call transport
+- Reviews are single-submit only and do not support editing, deletion, or moderation
+- Completed session history is lightweight and does not include advanced filtering or analytics
 - API validation is still intentionally light beyond required fields and array shape checks
 - Frontend profile state is stored only on-device
 
@@ -147,6 +156,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Adding a reservation step creates a useful commitment layer before real payment rails exist
 - Adding operator inbox and explicit traveler selection makes the two-sided flow easier to understand without needing a full marketplace backend
 - A shared session placeholder makes the active state clearer without forcing a premature realtime architecture
+- A small completed-history layer makes the product loop feel inspectable without adding a heavy analytics or ledger system
 - Simpler routing decisions reduce friction during iteration
 - Stabilizing screen load behavior matters as much as feature work in small MVP flows
 - Small copy and usability improvements can make the app feel more like a product without changing the architecture
@@ -161,12 +171,12 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding, profile memory, local readiness, intent-based role matching, operator response handling, traveler selection, reservation, session handoff, active session placeholder state, session locking, local trust, simulated call states, and the review loop are working in stable MVP form. The app now has a credible two-sided request-to-session backbone with an economic placeholder layer and remains in a tightening and QA-focused phase.
+Core onboarding, profile memory, local readiness, intent-based role matching, operator response handling, traveler selection, reservation, session handoff, active session placeholder state, session locking, review submission, completed session history, local trust, simulated call states, and the review loop are working in stable MVP form. The app now has a credible two-sided request-to-session backbone with an economic placeholder layer and a lightweight closed-loop history layer.
 
 ## Next Steps
 
 - Refine rule-based matching quality within the current deterministic system
-- Continue tightening request lifecycle, operator response handling, reservation, session handoff, active session state, session locking, trust, call, and review behavior for reliability
+- Continue tightening request lifecycle, operator response handling, reservation, session handoff, active session state, session locking, trust, review, and history behavior for reliability
 - Improve profile and match presentation without changing the core flow
 - Hold the architecture simple until the current loop feels consistently stable
 
@@ -177,7 +187,7 @@ Build the smallest useful version of the core user loop, make it reliable, and d
 ## System Boundaries
 
 - Reality vs simulation:
-  Profile data, request creation, role-based matching, operator nominations, traveler selection, reservation state, active session state, and session locking are real within the current app flow. The call layer is simulated and does not provide real audio. Reviews, trust, and saved state are local-only and stored on-device.
+  Profile data, request creation, role-based matching, operator nominations, traveler selection, reservation state, active session state, session locking, and completed history are real within the current app flow. The call layer is simulated and does not provide real audio. Trust and saved profile state are local-only on-device, while request reviews are stored only in the in-memory MVP backend.
 - Single-device limitation:
   The current system behaves as a single-device simulation. There is no shared backend state that synchronizes user activity across devices.
 - Identity limitation:
@@ -202,3 +212,4 @@ Build the smallest useful version of the core user loop, make it reliable, and d
 - Day 22: Operator Response & Traveler Selection
 - Day 23: Reserved Session State & Pre-Call Handoff
 - Day 24: Active Session Placeholder & Post-Call Review Entry
+- Day 25: Review Submission & Completed Session History

@@ -162,6 +162,73 @@ type ReservedSessionSummary = {
   locationSummary: string;
   viewerRole: "traveler" | "operator" | "other";
   isSelectedOperator: boolean;
+  hasReview: boolean;
+  review?: {
+    rating: number;
+    comment?: string;
+    createdAt: string;
+  };
+};
+
+type SessionReview = {
+  requestId: string;
+  rating: number;
+  comment?: string;
+  createdAt: string;
+  travelerUserId: string;
+  selectedOperatorId?: string;
+};
+
+type CompletedTravelerRequestItem = {
+  requestId: string;
+  status: HelpRequestStatus;
+  paymentStatus: PaymentStatus;
+  selectedOperator: {
+    userId: string;
+    displayName: string;
+    city?: string;
+  } | null;
+  traveler: {
+    userId: string;
+    displayName: string;
+  };
+  quotedAmount?: number;
+  currency: string;
+  durationMinutes?: number;
+  locationSummary: string;
+  intent: HelpIntent;
+  completedAt?: string;
+  review?: {
+    rating: number;
+    comment?: string;
+    createdAt: string;
+  };
+};
+
+type CompletedOperatorSessionItem = {
+  requestId: string;
+  traveler: {
+    userId: string;
+    displayName: string;
+    city?: string;
+  };
+  operator: {
+    userId: string;
+    displayName: string;
+  } | null;
+  quotedAmount?: number;
+  earnedAmount?: number;
+  currency: string;
+  paymentStatus: PaymentStatus;
+  completedAt?: string;
+  intent: HelpIntent;
+  locationSummary: string;
+  review?: {
+    rating: number;
+    comment?: string;
+    createdAt: string;
+  };
+  rating?: number;
 };
 
 type MatchCategory = {
@@ -174,6 +241,7 @@ const users: User[] = [];
 const profiles: Profile[] = [];
 const helpRequests: HelpRequest[] = [];
 const operatorNominations: OperatorNomination[] = [];
+const sessionReviews: SessionReview[] = [];
 
 const seedProfiles = [
   {
@@ -527,6 +595,10 @@ function getNominationsByRequestId(requestId: string) {
   return operatorNominations.filter((nomination) => nomination.requestId === requestId);
 }
 
+function getReviewByRequestId(requestId: string) {
+  return sessionReviews.find((review) => review.requestId === requestId);
+}
+
 function isTerminalRequestStatus(status: HelpRequestStatus) {
   return ["completed", "cancelled", "expired", "timed_out", "missed"].includes(status);
 }
@@ -728,6 +800,7 @@ function getReservedSessionSummary(
       : viewerUserId && viewerUserId === request.selectedOperatorId
         ? "operator"
         : "other";
+  const review = getReviewByRequestId(request.id);
 
   return {
     requestId: request.id,
@@ -768,6 +841,115 @@ function getReservedSessionSummary(
     isSelectedOperator:
       request.selectedOperatorId !== undefined &&
       viewerUserId === request.selectedOperatorId,
+    hasReview: review !== undefined,
+    ...(review
+      ? {
+          review: {
+            rating: review.rating,
+            ...(review.comment ? { comment: review.comment } : {}),
+            createdAt: review.createdAt,
+          },
+        }
+      : {}),
+  };
+}
+
+function getCompletedTravelerRequestItem(
+  request: HelpRequest
+): CompletedTravelerRequestItem {
+  const travelerProfile = profiles.find((profile) => profile.userId === request.userId);
+  const operatorProfile =
+    request.selectedOperatorId === undefined
+      ? null
+      : profiles.find((profile) => profile.userId === request.selectedOperatorId) ?? null;
+  const review = getReviewByRequestId(request.id);
+  const durationMinutes =
+    request.startedAt && request.endedAt
+      ? Math.max(
+          1,
+          Math.round(
+            (new Date(request.endedAt).getTime() -
+              new Date(request.startedAt).getTime()) /
+              60000
+          )
+        )
+      : undefined;
+
+  return {
+    requestId: request.id,
+    status: request.status,
+    paymentStatus: request.paymentStatus,
+    selectedOperator:
+      operatorProfile === null
+        ? null
+        : {
+            userId: operatorProfile.userId,
+            displayName: operatorProfile.displayName,
+            ...(operatorProfile.city ? { city: operatorProfile.city } : {}),
+          },
+    traveler: {
+      userId: request.userId,
+      displayName: travelerProfile?.displayName || "Traveler",
+    },
+    ...(request.quotedAmount !== undefined ? { quotedAmount: request.quotedAmount } : {}),
+    currency: request.currency,
+    ...(durationMinutes !== undefined ? { durationMinutes } : {}),
+    locationSummary: travelerProfile?.city || "Location not set",
+    intent: request.intent,
+    ...(request.endedAt ? { completedAt: request.endedAt } : {}),
+    ...(review
+      ? {
+          review: {
+            rating: review.rating,
+            ...(review.comment ? { comment: review.comment } : {}),
+            createdAt: review.createdAt,
+          },
+        }
+      : {}),
+  };
+}
+
+function getCompletedOperatorSessionItem(
+  request: HelpRequest
+): CompletedOperatorSessionItem {
+  const travelerProfile = profiles.find((profile) => profile.userId === request.userId);
+  const operatorProfile =
+    request.selectedOperatorId === undefined
+      ? null
+      : profiles.find((profile) => profile.userId === request.selectedOperatorId) ?? null;
+  const review = getReviewByRequestId(request.id);
+
+  return {
+    requestId: request.id,
+    traveler: {
+      userId: request.userId,
+      displayName: travelerProfile?.displayName || "Traveler",
+      ...(travelerProfile?.city ? { city: travelerProfile.city } : {}),
+    },
+    operator:
+      operatorProfile === null
+        ? null
+        : {
+            userId: operatorProfile.userId,
+            displayName: operatorProfile.displayName,
+          },
+    ...(request.quotedAmount !== undefined ? { quotedAmount: request.quotedAmount } : {}),
+    ...(request.quotedAmount !== undefined ? { earnedAmount: request.quotedAmount } : {}),
+    currency: request.currency,
+    paymentStatus: request.paymentStatus,
+    ...(request.endedAt ? { completedAt: request.endedAt } : {}),
+    intent: request.intent,
+    locationSummary: travelerProfile?.city || "Location not set",
+    ...(review
+      ? {
+          review: {
+            rating: review.rating,
+            ...(review.comment ? { comment: review.comment } : {}),
+            createdAt: review.createdAt,
+          },
+          rating: review.rating,
+        }
+      : {}),
   };
 }
 
@@ -1328,6 +1510,88 @@ app.get("/requests/:requestId/summary", (req, res) => {
 
   res.json({
     summary: getReservedSessionSummary(request, userId || undefined),
+  });
+});
+
+app.post("/requests/:requestId/review", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+  const userId = getTrimmedString(req.body?.userId);
+  const comment = getTrimmedString(req.body?.comment);
+  const rating = getNumber(req.body?.rating);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  if (!userId) {
+    return res.status(400).json({ error: "userId is required" });
+  }
+
+  if (request.userId !== userId) {
+    return res.status(403).json({ error: "Request does not belong to this traveler" });
+  }
+
+  if (request.status !== "completed") {
+    return res.status(400).json({ error: "Request must be completed before review" });
+  }
+
+  if (rating === undefined || rating === null || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: "rating must be between 1 and 5" });
+  }
+
+  if (getReviewByRequestId(request.id)) {
+    return res.status(400).json({ error: "A review already exists for this request" });
+  }
+
+  const review: SessionReview = {
+    requestId: request.id,
+    rating,
+    ...(comment ? { comment } : {}),
+    createdAt: new Date().toISOString(),
+    travelerUserId: userId,
+    ...(request.selectedOperatorId
+      ? { selectedOperatorId: request.selectedOperatorId }
+      : {}),
+  };
+
+  sessionReviews.push(review);
+
+  res.status(201).json({
+    request: getRequestState(request),
+    review,
+  });
+});
+
+app.get("/users/:userId/requests/completed", (req, res) => {
+  const userId = getTrimmedString(req.params.userId);
+
+  res.json({
+    requests: helpRequests
+      .filter((request) => request.userId === userId && request.status === "completed")
+      .sort(
+        (a, b) =>
+          new Date(b.endedAt ?? b.createdAt).getTime() -
+          new Date(a.endedAt ?? a.createdAt).getTime()
+      )
+      .map((request) => getCompletedTravelerRequestItem(request)),
+  });
+});
+
+app.get("/operators/:userId/sessions/completed", (req, res) => {
+  const userId = getTrimmedString(req.params.userId);
+
+  res.json({
+    sessions: helpRequests
+      .filter(
+        (request) =>
+          request.selectedOperatorId === userId && request.status === "completed"
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.endedAt ?? b.createdAt).getTime() -
+          new Date(a.endedAt ?? a.createdAt).getTime()
+      )
+      .map((request) => getCompletedOperatorSessionItem(request)),
   });
 });
 

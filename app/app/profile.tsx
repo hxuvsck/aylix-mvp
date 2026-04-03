@@ -232,6 +232,22 @@ export default function ProfileScreen() {
                     View traveler requests that are currently nominated to you.
                 </Text>
 
+                <Button
+                    title="Completed sessions"
+                    onPress={() => router.push("/history")}
+                />
+                <Text style={{ marginTop: 12, marginBottom: 12, color: "#444" }}>
+                    Review your completed traveler sessions and submitted ratings.
+                </Text>
+
+                <Button
+                    title="Operator history"
+                    onPress={() => router.push("/operator/history")}
+                />
+                <Text style={{ marginTop: 12, marginBottom: 12, color: "#444" }}>
+                    View completed sessions where you were selected as the operator.
+                </Text>
+
                 {latestReview ? (
                     <View style={{ marginTop: 24, marginBottom: 20 }}>
                         <Text style={{ fontSize: 22, marginBottom: 12 }}>Latest review</Text>
