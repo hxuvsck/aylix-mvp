@@ -1,7 +1,8 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, ScrollView, Text, View } from "react-native";
 import {
+    completeActiveSession,
     getReservedSessionSummary,
     startRequestSession,
     type HelpIntent,
@@ -24,6 +25,24 @@ const intentLabels: Record<HelpIntent, string> = {
 
 function getSingleParam(value?: string | string[]) {
     return Array.isArray(value) ? value[0] : value;
+}
+
+function formatElapsed(startedAt?: string) {
+    if (!startedAt) {
+        return "00:00";
+    }
+
+    const started = new Date(startedAt).getTime();
+
+    if (Number.isNaN(started)) {
+        return "00:00";
+    }
+
+    const seconds = Math.max(0, Math.floor((Date.now() - started) / 1000));
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+
+    return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
 export default function SessionScreen() {
@@ -58,6 +77,20 @@ export default function SessionScreen() {
         void loadSummary();
     }, [requestId]);
 
+    useEffect(() => {
+        if (!requestId || !summary || ["completed", "cancelled", "expired", "timed_out", "missed"].includes(summary.requestStatus)) {
+            return;
+        }
+
+        const intervalId = setInterval(() => {
+            void loadSummary();
+        }, 2500);
+
+        return () => {
+            clearInterval(intervalId);
+        };
+    }, [requestId, summary?.requestStatus]);
+
     const handleStartSession = async () => {
         if (!requestId || !summary?.selectedOperatorId) {
             return;
@@ -69,21 +102,54 @@ export default function SessionScreen() {
                 operatorId: summary.selectedOperatorId,
                 userId: profile?.userId,
             });
-
-            router.push({
-                pathname: "/call",
-                params: {
-                    requestId,
-                    userId: summary.selectedOperatorId,
-                    displayName: summary.operator?.displayName ?? "Operator",
-                    city: summary.operator?.city ?? "",
-                    score: "0",
-                    reasons: JSON.stringify([]),
-                },
-            });
+            await loadSummary();
         } catch (err: any) {
             setError(err.message ?? "Could not start the session.");
         }
+    };
+
+    const handleCompleteSession = async () => {
+        if (!requestId || !summary?.selectedOperatorId) {
+            return;
+        }
+
+        try {
+            setError("");
+            await completeActiveSession(requestId, {
+                operatorId: summary.selectedOperatorId,
+                userId: profile?.userId,
+            });
+            await loadSummary();
+        } catch (err: any) {
+            setError(err.message ?? "Could not complete the session.");
+        }
+    };
+
+    const handleLeaveReview = () => {
+        if (!summary) {
+            return;
+        }
+
+        const counterpart =
+            summary.viewerRole === "operator"
+                ? summary.traveler
+                : summary.operator;
+
+        if (!counterpart) {
+            return;
+        }
+
+        router.push({
+            pathname: "/review",
+            params: {
+                requestId: summary.requestId,
+                userId: counterpart.userId,
+                displayName: counterpart.displayName,
+                city: counterpart.city ?? "",
+                score: "0",
+                reasons: JSON.stringify([]),
+            },
+        });
     };
 
     if (isLoading) {
@@ -105,22 +171,47 @@ export default function SessionScreen() {
         );
     }
 
-    const isReadyToStart = summary.paymentStatus === "reserved" && summary.requestStatus !== "in_call";
+    const stage = useMemo(() => {
+        if (summary.requestStatus === "completed") {
+            return "completed";
+        }
+
+        if (summary.requestStatus === "in_call") {
+            return "active";
+        }
+
+        return "reserved";
+    }, [summary.requestStatus]);
+    const elapsed = formatElapsed(summary.startedAt);
+    const title =
+        stage === "active"
+            ? "Session in progress"
+            : stage === "completed"
+              ? "Session completed"
+              : "Session ready";
+    const subtitle =
+        stage === "active"
+            ? "This is the active session placeholder for the current request."
+            : stage === "completed"
+              ? "The session is complete and ready for review."
+              : "Reserved handoff before the live call placeholder begins.";
+    const statusLabel =
+        stage === "active" ? "In progress" : stage === "completed" ? "Completed" : "Reserved";
 
     return (
         <ScrollView
             style={{ flex: 1, backgroundColor: "white" }}
             contentContainerStyle={{ padding: 20, flexGrow: 1 }}
         >
-            <Text style={{ fontSize: 28, marginBottom: 8 }}>Session ready</Text>
+            <Text style={{ fontSize: 28, marginBottom: 8 }}>{title}</Text>
             <Text style={{ fontSize: 16, marginBottom: 20, color: "#444" }}>
-                Reserved handoff before the live call placeholder begins.
+                {subtitle}
             </Text>
 
             {error ? <Text style={{ marginBottom: 16 }}>ERROR: {error}</Text> : null}
 
             <View style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 20 }}>
-                <Text style={{ marginBottom: 4 }}>Reserved</Text>
+                <Text style={{ marginBottom: 4 }}>{statusLabel}</Text>
                 <Text style={{ marginBottom: 4 }}>Request ID: {summary.requestId}</Text>
                 <Text style={{ marginBottom: 4 }}>Intent: {intentLabels[summary.intent]}</Text>
                 <Text style={{ marginBottom: 4 }}>Location: {summary.locationSummary}</Text>
@@ -136,6 +227,15 @@ export default function SessionScreen() {
                 <Text style={{ marginBottom: 4 }}>
                     Payment status: {summary.paymentStatus}
                 </Text>
+                <Text style={{ marginBottom: 4 }}>
+                    Started: {summary.startedAt ? new Date(summary.startedAt).toLocaleString() : "Not started yet"}
+                </Text>
+                <Text style={{ marginBottom: 4 }}>
+                    Completed: {summary.completedAt ? new Date(summary.completedAt).toLocaleString() : "Not completed yet"}
+                </Text>
+                {stage === "active" ? (
+                    <Text style={{ marginBottom: 4 }}>Elapsed: {elapsed}</Text>
+                ) : null}
                 <Text>Description: {summary.description || "No description added"}</Text>
             </View>
 
@@ -163,31 +263,25 @@ export default function SessionScreen() {
                 <Text style={{ marginBottom: 2 }}>Request created</Text>
                 <Text style={{ marginBottom: 2 }}>Operator selected</Text>
                 <Text style={{ marginBottom: 2 }}>Reserved</Text>
-                <Text>Ready to start</Text>
+                <Text style={{ marginBottom: 2 }}>{stage === "active" || stage === "completed" ? "In progress" : "Ready to start"}</Text>
+                {stage === "completed" ? <Text>Completed</Text> : null}
             </View>
 
-            {isReadyToStart ? (
+            {stage === "reserved" ? (
                 <View style={{ marginBottom: 12 }}>
                     <Button title="Start session" onPress={() => void handleStartSession()} />
                 </View>
-            ) : summary.requestStatus === "in_call" ? (
+            ) : null}
+
+            {stage === "active" ? (
                 <View style={{ marginBottom: 12 }}>
-                    <Button
-                        title="Continue to call"
-                        onPress={() =>
-                            router.push({
-                                pathname: "/call",
-                                params: {
-                                    requestId,
-                                    userId: summary.selectedOperatorId ?? "",
-                                    displayName: summary.operator?.displayName ?? "Operator",
-                                    city: summary.operator?.city ?? "",
-                                    score: "0",
-                                    reasons: JSON.stringify([]),
-                                },
-                            })
-                        }
-                    />
+                    <Button title="Complete session" onPress={() => void handleCompleteSession()} />
+                </View>
+            ) : null}
+
+            {stage === "completed" ? (
+                <View style={{ marginBottom: 12 }}>
+                    <Button title="Leave review" onPress={handleLeaveReview} />
                 </View>
             ) : null}
 

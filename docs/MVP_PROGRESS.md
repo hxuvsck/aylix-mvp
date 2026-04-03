@@ -59,13 +59,14 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 15. Reservation locks the request to one selected operator and finishes the marketplace-selection step.
 16. Traveler and selected operator can both move into a shared reserved-session handoff screen.
 17. Starting the session from the handoff screen moves the request into `in_call`.
-18. The call screen shows a short connecting state, then a connected state with a simple timer.
-19. Ending the call routes the user to a review screen.
-20. The user submits a lightweight review, which also updates local trust for the reviewed user and completes the request.
-21. Completing a reserved request also advances its payment placeholder state to `paid`.
-22. The user returns to the profile screen and can see review memory still reflected in the app.
-23. On later launches, the app goes straight to the profile screen if saved profile data exists.
-24. The user can reset the saved profile and return to onboarding.
+18. Traveler and selected operator can both see a shared active-session placeholder with the current request snapshot.
+19. The active session can be completed explicitly from the shared session screen.
+20. Completing the session moves the request to `completed` and payment state to `paid`.
+21. The user can then enter the review screen and submit a lightweight review.
+22. Review submission updates local trust for the reviewed user.
+23. The user returns to the profile screen and can see review memory still reflected in the app.
+24. On later launches, the app goes straight to the profile screen if saved profile data exists.
+25. The user can reset the saved profile and return to onboarding.
 
 ## What Currently Works
 
@@ -90,11 +91,14 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Operator cards display roles, capabilities, trust, and human-readable reasons
 - Session start now requires a reserved selected operator and locks the request to that operator
 - Traveler and selected operator now share a lightweight reserved-session handoff screen before call
+- Shared session screen now supports reserved, in-progress, and completed states
+- Traveler and selected operator can both complete the active session from the shared session screen
+- Session summary now includes request state, payment state, `startedAt`, and completion timing for the current handoff flow
 - Completing a reserved request automatically moves its payment placeholder state to `paid`
 - Call screen simulates a basic call lifecycle with connecting and connected states
 - Call screen starts a simple MM:SS timer after the connected state begins
 - Review submit now updates a local per-user trust snapshot using the latest rating
-- Review submit also completes the active request session explicitly
+- Review now acts as the post-session entry point instead of completing the request itself
 - App remembers the created profile between launches
 - App auto-routes to onboarding or profile based on saved state
 - User can clear saved profile and restart the flow
@@ -122,6 +126,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Payment status is a structural placeholder and does not process or move real money
 - Operator identity still depends on the saved local profile because there is no auth layer
 - Reserved-session handoff is a lightweight state transition and not yet a true pre-call coordination layer
+- Active session state is still a placeholder layer and not a real live-call transport
 - API validation is still intentionally light beyond required fields and array shape checks
 - Frontend profile state is stored only on-device
 
@@ -141,6 +146,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - The shift from static matching into request state creates a more credible coordination loop without requiring heavy infrastructure
 - Adding a reservation step creates a useful commitment layer before real payment rails exist
 - Adding operator inbox and explicit traveler selection makes the two-sided flow easier to understand without needing a full marketplace backend
+- A shared session placeholder makes the active state clearer without forcing a premature realtime architecture
 - Simpler routing decisions reduce friction during iteration
 - Stabilizing screen load behavior matters as much as feature work in small MVP flows
 - Small copy and usability improvements can make the app feel more like a product without changing the architecture
@@ -155,12 +161,12 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding, profile memory, local readiness, intent-based role matching, operator response handling, traveler selection, reservation, session handoff, session locking, local trust, simulated call states, and the review loop are working in stable MVP form. The app now has a credible two-sided request-to-session backbone with an economic placeholder layer and remains in a tightening and QA-focused phase.
+Core onboarding, profile memory, local readiness, intent-based role matching, operator response handling, traveler selection, reservation, session handoff, active session placeholder state, session locking, local trust, simulated call states, and the review loop are working in stable MVP form. The app now has a credible two-sided request-to-session backbone with an economic placeholder layer and remains in a tightening and QA-focused phase.
 
 ## Next Steps
 
 - Refine rule-based matching quality within the current deterministic system
-- Continue tightening request lifecycle, operator response handling, reservation, session handoff, session locking, trust, call, and review behavior for reliability
+- Continue tightening request lifecycle, operator response handling, reservation, session handoff, active session state, session locking, trust, call, and review behavior for reliability
 - Improve profile and match presentation without changing the core flow
 - Hold the architecture simple until the current loop feels consistently stable
 
@@ -171,13 +177,13 @@ Build the smallest useful version of the core user loop, make it reliable, and d
 ## System Boundaries
 
 - Reality vs simulation:
-  Profile data, request creation, role-based matching, operator nominations, traveler selection, reservation state, and session locking are real within the current app flow. The call layer is simulated and does not provide real audio. Reviews, trust, and saved state are local-only and stored on-device.
+  Profile data, request creation, role-based matching, operator nominations, traveler selection, reservation state, active session state, and session locking are real within the current app flow. The call layer is simulated and does not provide real audio. Reviews, trust, and saved state are local-only and stored on-device.
 - Single-device limitation:
   The current system behaves as a single-device simulation. There is no shared backend state that synchronizes user activity across devices.
 - Identity limitation:
   There is no authentication, and user identity is not persistent across devices or installs.
 - Interaction limitation:
-  There are no real audio sessions, and operator responses plus reserved handoff are still exercised through lightweight MVP request-state mechanics rather than a full operator product surface.
+  There are no real audio sessions, and operator responses plus reserved and active session states are still exercised through lightweight MVP request-state mechanics rather than a full operator product surface.
 - Operator system missing:
   The current MVP supports dynamic support roles in matching, but not a separate authenticated operator application or workflow.
 - Platform limitations:
@@ -195,3 +201,4 @@ Build the smallest useful version of the core user loop, make it reliable, and d
 - Day 21: Operator Inbox
 - Day 22: Operator Response & Traveler Selection
 - Day 23: Reserved Session State & Pre-Call Handoff
+- Day 24: Active Session Placeholder & Post-Call Review Entry

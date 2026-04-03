@@ -238,14 +238,9 @@ export default function RequestScreen() {
         }
 
         router.push({
-            pathname: "/call",
+            pathname: "/session",
             params: {
                 requestId: activeRequest.id,
-                userId: selectedOperator.operatorId,
-                displayName: selectedOperator.displayName,
-                city: selectedOperator.city ?? "",
-                score: "0",
-                reasons: JSON.stringify(selectedOperator.reasons ?? []),
             },
         });
     };
@@ -465,7 +460,7 @@ export default function RequestScreen() {
                             ) : null}
                             {!isTerminal && activeRequest?.status === "in_call" ? (
                                 <View style={{ marginBottom: 8 }}>
-                                    <Button title="Call" onPress={handleOpenCall} />
+                                    <Button title="Continue session" onPress={handleOpenCall} />
                                 </View>
                             ) : null}
                             {activeRequest?.status === "in_call" ? (

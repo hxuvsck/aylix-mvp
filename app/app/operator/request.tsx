@@ -151,9 +151,12 @@ export default function OperatorRequestScreen() {
                 </Text>
             </View>
 
-            {sessionSummary?.isSelectedOperator && requestState.request.paymentStatus === "reserved" ? (
+            {sessionSummary?.isSelectedOperator &&
+            ["reserved", "paid"].includes(requestState.request.paymentStatus) ? (
                 <>
-                    <Text style={{ fontSize: 20, marginBottom: 12 }}>You were selected</Text>
+                    <Text style={{ fontSize: 20, marginBottom: 12 }}>
+                        {requestState.request.status === "in_call" ? "Session in progress" : "You were selected"}
+                    </Text>
                     <View style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 20 }}>
                         <Text style={{ marginBottom: 4 }}>
                             Traveler: {sessionSummary.traveler.displayName}
@@ -171,7 +174,7 @@ export default function OperatorRequestScreen() {
                             Payment: {sessionSummary.paymentStatus}
                         </Text>
                         <Button
-                            title="Continue to session"
+                            title={requestState.request.status === "in_call" ? "Continue to session" : "Continue to session"}
                             onPress={() =>
                                 router.push({
                                     pathname: "/session",

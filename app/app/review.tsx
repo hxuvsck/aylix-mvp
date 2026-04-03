@@ -1,7 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Button, ScrollView, Text, TextInput, View } from "react-native";
-import { completeRequestSession } from "../lib/api";
 import { saveLatestReview, updateUserTrust } from "../lib/storage";
 
 function getSingleParam(value?: string | string[]) {
@@ -53,10 +52,6 @@ export default function ReviewScreen() {
             submittedAt: new Date().toISOString(),
         });
         await updateUserTrust(userId, rating);
-        if (requestId) {
-            await completeRequestSession(requestId);
-        }
-
         router.replace("/profile");
     };
 
@@ -78,8 +73,9 @@ export default function ReviewScreen() {
             keyboardShouldPersistTaps="handled"
         >
             <View>
-                <Text style={{ fontSize: 28, marginBottom: 8 }}>Review Call</Text>
+                <Text style={{ fontSize: 28, marginBottom: 8 }}>Rate your session</Text>
                 <Text style={{ fontSize: 18, marginBottom: 8 }}>{displayName}</Text>
+                {requestId ? <Text style={{ marginBottom: 8 }}>Session completed</Text> : null}
                 <Text style={{ marginBottom: 20, color: "#444" }}>
                     Share a quick rating and note about what was helpful.
                 </Text>

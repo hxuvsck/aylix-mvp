@@ -137,6 +137,8 @@ type ReservedSessionSummary = {
   requestStatus: HelpRequestStatus;
   paymentStatus: PaymentStatus;
   selectedOperatorId?: string;
+  startedAt?: string;
+  completedAt?: string;
   traveler: {
     userId: string;
     displayName: string;
@@ -732,6 +734,8 @@ function getReservedSessionSummary(
     requestStatus: request.status,
     paymentStatus: request.paymentStatus,
     ...(request.selectedOperatorId ? { selectedOperatorId: request.selectedOperatorId } : {}),
+    ...(request.startedAt ? { startedAt: request.startedAt } : {}),
+    ...(request.endedAt ? { completedAt: request.endedAt } : {}),
     traveler: {
       userId: request.userId,
       displayName: travelerProfile?.displayName || "Traveler",
@@ -1197,14 +1201,36 @@ app.post("/requests/:requestId/reserve", (req, res) => {
 
 app.post("/requests/:requestId/complete", (req, res) => {
   const request = getRequestById(req.params.requestId);
+  const operatorId = getTrimmedString(req.body?.operatorId);
+  const userId = getTrimmedString(req.body?.userId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
   }
 
+  if (request.status !== "in_call") {
+    return res.status(400).json({ error: "Request must be in progress before completing" });
+  }
+
+  if (!request.selectedOperatorId) {
+    return res.status(400).json({ error: "Request must have a selected operator before completing" });
+  }
+
+  if (operatorId && operatorId !== request.selectedOperatorId) {
+    return res.status(400).json({ error: "operatorId must match the selected operator" });
+  }
+
+  if (
+    userId &&
+    userId !== request.userId &&
+    userId !== request.selectedOperatorId
+  ) {
+    return res.status(403).json({ error: "User cannot complete this session" });
+  }
+
   request.status = "completed";
   request.endedAt = new Date().toISOString();
-  if (request.paymentStatus === "reserved") {
+  if (["reserved", "paid"].includes(request.paymentStatus)) {
     request.paymentStatus = "paid";
   }
 

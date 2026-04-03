@@ -167,6 +167,8 @@ export type ReservedSessionSummary = {
   requestStatus: HelpRequestStatus;
   paymentStatus: PaymentStatus;
   selectedOperatorId?: string;
+  startedAt?: string;
+  completedAt?: string;
   traveler: {
     userId: string;
     displayName: string;
@@ -292,6 +294,16 @@ export function startRequestSession(
 export function completeRequestSession(requestId: string) {
   return request<RequestStateResponse>(`/requests/${requestId}/complete`, {
     method: "POST",
+  });
+}
+
+export function completeActiveSession(
+  requestId: string,
+  input: { operatorId?: string; userId?: string }
+) {
+  return request<RequestStateResponse>(`/requests/${requestId}/complete`, {
+    method: "POST",
+    body: input,
   });
 }
 
