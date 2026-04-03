@@ -94,6 +94,72 @@ type OperatorNomination = {
   operatorId: string;
   status: NominationStatus;
   createdAt: string;
+  respondedAt?: string;
+};
+
+type OperatorInboxItem = {
+  requestId: string;
+  travelerUserId: string;
+  travelerDisplayName?: string;
+  travelerCity?: string;
+  locationSummary: string;
+  intent: HelpIntent;
+  description?: string;
+  quotedAmount?: number;
+  currency: string;
+  estimatedDurationMinutes?: number;
+  paymentStatus: PaymentStatus;
+  requestStatus: HelpRequestStatus;
+  createdAt: string;
+  acceptedOperatorsCount: number;
+  nominationStatus: NominationStatus;
+};
+
+type RequestResponseItem = {
+  operatorId: string;
+  operatorProfileId?: string;
+  displayName: string;
+  city?: string;
+  languages?: string[];
+  roles?: Role[];
+  capabilities?: string[];
+  trustScore?: number;
+  nominationStatus: NominationStatus;
+  respondedAt?: string;
+  requestStatus: HelpRequestStatus;
+  selectable: boolean;
+  isSelected: boolean;
+  reasons: string[];
+};
+
+type ReservedSessionSummary = {
+  requestId: string;
+  requestStatus: HelpRequestStatus;
+  paymentStatus: PaymentStatus;
+  selectedOperatorId?: string;
+  traveler: {
+    userId: string;
+    displayName: string;
+    city?: string;
+    languages?: string[];
+  };
+  operator: {
+    userId: string;
+    displayName: string;
+    city?: string;
+    languages?: string[];
+    roles?: Role[];
+    capabilities?: string[];
+    trustScore?: number;
+  } | null;
+  intent: HelpIntent;
+  description?: string;
+  quotedAmount?: number;
+  currency: string;
+  estimatedDurationMinutes?: number;
+  locationSummary: string;
+  viewerRole: "traveler" | "operator" | "other";
+  isSelectedOperator: boolean;
 };
 
 type MatchCategory = {
@@ -375,6 +441,21 @@ function getDefaultExpiryTimestamp() {
   return new Date(Date.now() + 5 * 60 * 1000).toISOString();
 }
 
+function getEstimatedDurationMinutes(intent: HelpIntent) {
+  switch (intent) {
+    case "food":
+      return 20;
+    case "navigation":
+      return 15;
+    case "translation":
+      return 25;
+    case "explore":
+      return 45;
+    case "emergency":
+      return 30;
+  }
+}
+
 function createHelpRequest(input: {
   userId: string;
   intent: HelpIntent;
@@ -516,6 +597,173 @@ function getRequestState(request: HelpRequest) {
     selectedOperator,
     acceptedOperators,
     pendingOperators,
+  };
+}
+
+function getOperatorInboxItems(operatorId: string): OperatorInboxItem[] {
+  const items: OperatorInboxItem[] = [];
+
+  helpRequests.forEach((request) => {
+    applyRequestExpiry(request);
+
+    const nomination = getNominationsByRequestId(request.id).find(
+      (item) => item.operatorId === operatorId
+    );
+
+    if (!nomination || !["pending", "accepted"].includes(nomination.status)) {
+      return;
+    }
+
+    if (!["nominated", "accepted"].includes(request.status)) {
+      return;
+    }
+
+    if (request.paymentStatus === "refunded") {
+      return;
+    }
+
+    if (request.selectedOperatorId && request.selectedOperatorId !== operatorId) {
+      return;
+    }
+
+    const travelerProfile = profiles.find((profile) => profile.userId === request.userId);
+    const acceptedOperatorsCount = getNominationsByRequestId(request.id).filter(
+      (item) => item.status === "accepted"
+    ).length;
+
+    items.push({
+      requestId: request.id,
+      travelerUserId: request.userId,
+      ...(travelerProfile?.displayName
+        ? { travelerDisplayName: travelerProfile.displayName }
+        : {}),
+      ...(travelerProfile?.city ? { travelerCity: travelerProfile.city } : {}),
+      locationSummary: travelerProfile?.city || "Location not set",
+      intent: request.intent,
+      ...(request.description ? { description: request.description } : {}),
+      ...(request.quotedAmount !== undefined
+        ? { quotedAmount: request.quotedAmount }
+        : {}),
+      currency: request.currency,
+      estimatedDurationMinutes: getEstimatedDurationMinutes(request.intent),
+      paymentStatus: request.paymentStatus,
+      requestStatus: request.status,
+      createdAt: request.createdAt,
+      acceptedOperatorsCount,
+      nominationStatus: nomination.status,
+    });
+  });
+
+  return items.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
+function getRequestResponses(request: HelpRequest): RequestResponseItem[] {
+  applyRequestExpiry(request);
+
+  return getNominationsByRequestId(request.id)
+    .map((nomination) => {
+      const profile = profiles.find((candidate) => candidate.userId === nomination.operatorId);
+
+      if (!profile) {
+        return null;
+      }
+
+      const match = getRequestMatchResult(request, profile);
+      const isSelected = request.selectedOperatorId === nomination.operatorId;
+      const selectable =
+        nomination.status === "accepted" &&
+        request.paymentStatus === "quoted" &&
+        !request.selectedOperatorId &&
+        ["accepted", "nominated"].includes(request.status);
+
+      return {
+        operatorId: nomination.operatorId,
+        ...(profile.id ? { operatorProfileId: profile.id } : {}),
+        displayName: profile.displayName,
+        ...(profile.city ? { city: profile.city } : {}),
+        ...(profile.languages ? { languages: profile.languages } : {}),
+        ...(profile.roles ? { roles: profile.roles } : {}),
+        ...(profile.capabilities ? { capabilities: profile.capabilities } : {}),
+        ...(profile.trustScore !== undefined ? { trustScore: profile.trustScore } : {}),
+        nominationStatus: nomination.status,
+        ...(nomination.respondedAt ? { respondedAt: nomination.respondedAt } : {}),
+        requestStatus: request.status,
+        selectable,
+        isSelected,
+        reasons: match.reasons,
+      };
+    })
+    .filter((item): item is RequestResponseItem => item !== null)
+    .sort((a, b) => {
+      const nominationPriority: Record<NominationStatus, number> = {
+        accepted: 0,
+        pending: 1,
+        declined: 2,
+        expired: 3,
+      };
+
+      return nominationPriority[a.nominationStatus] - nominationPriority[b.nominationStatus];
+    });
+}
+
+function getReservedSessionSummary(
+  request: HelpRequest,
+  viewerUserId?: string
+): ReservedSessionSummary {
+  applyRequestExpiry(request);
+
+  const travelerProfile = profiles.find((profile) => profile.userId === request.userId);
+  const operatorProfile =
+    request.selectedOperatorId === undefined
+      ? null
+      : profiles.find((profile) => profile.userId === request.selectedOperatorId) ?? null;
+
+  const viewerRole =
+    viewerUserId === request.userId
+      ? "traveler"
+      : viewerUserId && viewerUserId === request.selectedOperatorId
+        ? "operator"
+        : "other";
+
+  return {
+    requestId: request.id,
+    requestStatus: request.status,
+    paymentStatus: request.paymentStatus,
+    ...(request.selectedOperatorId ? { selectedOperatorId: request.selectedOperatorId } : {}),
+    traveler: {
+      userId: request.userId,
+      displayName: travelerProfile?.displayName || "Traveler",
+      ...(travelerProfile?.city ? { city: travelerProfile.city } : {}),
+      ...(travelerProfile?.languages ? { languages: travelerProfile.languages } : {}),
+    },
+    operator:
+      operatorProfile === null
+        ? null
+        : {
+            userId: operatorProfile.userId,
+            displayName: operatorProfile.displayName,
+            ...(operatorProfile.city ? { city: operatorProfile.city } : {}),
+            ...(operatorProfile.languages ? { languages: operatorProfile.languages } : {}),
+            ...(operatorProfile.roles ? { roles: operatorProfile.roles } : {}),
+            ...(operatorProfile.capabilities
+              ? { capabilities: operatorProfile.capabilities }
+              : {}),
+            ...(operatorProfile.trustScore !== undefined
+              ? { trustScore: operatorProfile.trustScore }
+              : {}),
+          },
+    intent: request.intent,
+    ...(request.description ? { description: request.description } : {}),
+    ...(request.quotedAmount !== undefined ? { quotedAmount: request.quotedAmount } : {}),
+    currency: request.currency,
+    estimatedDurationMinutes: getEstimatedDurationMinutes(request.intent),
+    locationSummary: travelerProfile?.city || "Location not set",
+    viewerRole,
+    isSelectedOperator:
+      request.selectedOperatorId !== undefined &&
+      viewerUserId === request.selectedOperatorId,
   };
 }
 
@@ -826,6 +1074,7 @@ app.post("/requests/:requestId/respond", (req, res) => {
   }
 
   nomination.status = action === "accept" ? "accepted" : "declined";
+  nomination.respondedAt = new Date().toISOString();
 
   if (action === "accept") {
     request.status = "accepted";
@@ -837,6 +1086,7 @@ app.post("/requests/:requestId/respond", (req, res) => {
 app.post("/requests/:requestId/start", (req, res) => {
   const request = getRequestById(req.params.requestId);
   const operatorId = getTrimmedString(req.body?.operatorId);
+  const userId = getTrimmedString(req.body?.userId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -844,16 +1094,36 @@ app.post("/requests/:requestId/start", (req, res) => {
 
   applyRequestExpiry(request);
 
-  if (request.status !== "accepted") {
-    return res.status(400).json({ error: "Request must be accepted before starting a session" });
+  if (request.paymentStatus === "refunded") {
+    return res.status(400).json({ error: "Refunded requests cannot be started" });
   }
 
-  if (!["reserved", "none"].includes(request.paymentStatus)) {
+  if (["completed", "cancelled", "expired", "timed_out", "missed"].includes(request.status)) {
+    return res.status(400).json({ error: "Request cannot be started in its current state" });
+  }
+
+  if (request.paymentStatus !== "reserved") {
     return res.status(400).json({ error: "Request must be reserved before starting" });
+  }
+
+  if (!request.selectedOperatorId) {
+    return res.status(400).json({ error: "Request must have a selected operator before starting" });
   }
 
   if (!operatorId) {
     return res.status(400).json({ error: "operatorId is required" });
+  }
+
+  if (operatorId !== request.selectedOperatorId) {
+    return res.status(400).json({ error: "operatorId must match the selected operator" });
+  }
+
+  if (
+    userId &&
+    userId !== request.userId &&
+    userId !== request.selectedOperatorId
+  ) {
+    return res.status(403).json({ error: "User cannot start this reserved session" });
   }
 
   const nomination = operatorNominations.find(
@@ -867,6 +1137,10 @@ app.post("/requests/:requestId/start", (req, res) => {
     return res.status(400).json({ error: "Operator must have an accepted nomination" });
   }
 
+  if (request.selectedOperatorId && request.selectedOperatorId !== operatorId) {
+    return res.status(400).json({ error: "Request is locked to another operator" });
+  }
+
   request.selectedOperatorId = operatorId;
   request.startedAt = new Date().toISOString();
   request.status = "in_call";
@@ -876,6 +1150,8 @@ app.post("/requests/:requestId/start", (req, res) => {
 
 app.post("/requests/:requestId/reserve", (req, res) => {
   const request = getRequestById(req.params.requestId);
+  const operatorId = getTrimmedString(req.body?.operatorId);
+  const userId = getTrimmedString(req.body?.userId);
 
   if (!request) {
     return res.status(404).json({ error: "Request not found" });
@@ -887,10 +1163,34 @@ app.post("/requests/:requestId/reserve", (req, res) => {
     return res.status(400).json({ error: "Request must be accepted before reserving" });
   }
 
+  if (!operatorId) {
+    return res.status(400).json({ error: "operatorId is required" });
+  }
+
+  if (userId && request.userId !== userId) {
+    return res.status(403).json({ error: "Request does not belong to this traveler" });
+  }
+
   if (request.paymentStatus !== "quoted") {
     return res.status(400).json({ error: "Request must be quoted before reserving" });
   }
 
+  if (request.selectedOperatorId && request.selectedOperatorId !== operatorId) {
+    return res.status(400).json({ error: "Request is already reserved for another operator" });
+  }
+
+  const nomination = operatorNominations.find(
+    (item) =>
+      item.requestId === request.id &&
+      item.operatorId === operatorId &&
+      item.status === "accepted"
+  );
+
+  if (!nomination) {
+    return res.status(400).json({ error: "Only accepted operators can be reserved" });
+  }
+
+  request.selectedOperatorId = operatorId;
   request.paymentStatus = "reserved";
   res.json(getRequestState(request));
 });
@@ -972,6 +1272,55 @@ app.get("/requests/:requestId", (req, res) => {
   }
 
   res.json(getRequestState(request));
+});
+
+app.get("/requests/:requestId/responses", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+  const userId = getTrimmedString(req.query.userId);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  if (userId && request.userId !== userId) {
+    return res.status(403).json({ error: "Request does not belong to this traveler" });
+  }
+
+  res.json({
+    request,
+    responses: getRequestResponses(request),
+  });
+});
+
+app.get("/requests/:requestId/summary", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+  const userId = getTrimmedString(req.query.userId);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  res.json({
+    summary: getReservedSessionSummary(request, userId || undefined),
+  });
+});
+
+app.get("/operator/requests", (req, res) => {
+  const operatorId = getTrimmedString(req.query.operatorId);
+
+  if (!operatorId) {
+    return res.status(400).json({ error: "operatorId is required" });
+  }
+
+  const operatorProfile = profiles.find((profile) => profile.userId === operatorId);
+
+  if (!operatorProfile) {
+    return res.status(404).json({ error: "Operator profile not found" });
+  }
+
+  res.json({
+    requests: getOperatorInboxItems(operatorId),
+  });
 });
 
 app.get("/match/:userId", (req, res) => {

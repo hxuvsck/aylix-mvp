@@ -10,7 +10,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 - Expo app for React Native and web
 - Expo Router for screen routing
-- Screens: `onboarding`, `profile`, `request`, `call`, `review`
+- Screens: `onboarding`, `profile`, `request`, `operator/inbox`, `operator/request`, `session`, `call`, `review`
 - API access centralized in `app/lib/api.ts`
 - Local profile, latest review, and trust persistence via AsyncStorage in `app/lib/storage.ts`
 - Onboarding uses `ScrollView` to stay usable on smaller screens and with the keyboard open
@@ -26,6 +26,8 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
   - `GET /profiles/:userId`
   - `POST /requests/match`
   - `GET /requests/:requestId`
+  - `GET /requests/:requestId/responses`
+  - `GET /requests/:requestId/summary`
   - `POST /requests/:requestId/respond`
   - `POST /requests/:requestId/reserve`
   - `POST /requests/:requestId/start`
@@ -35,6 +37,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
   - `POST /requests/:requestId/retry`
   - `POST /requests/:requestId/no-show`
   - `POST /requests/:requestId/refund`
+  - `GET /operator/requests`
 - Input validation for user creation, profile availability, role-based profile fields, and request payloads
 
 ## Core User Flow
@@ -50,16 +53,19 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 9. The user starts a help request from the profile screen by answering `What do you need?`
 10. The API ranks available operators by intent fit, role relevance, trust, and availability.
 11. The top operators are nominated to the request and the request enters a live response flow.
-12. The request screen polls for request state and shows selected, accepted, and pending operators.
-13. Once an operator accepts, the request can be reserved with an estimated session price before the call starts.
-14. Once one accepted operator is chosen, the session is locked to that operator and the request enters `in_call`.
-15. The call screen shows a short connecting state, then a connected state with a simple timer.
-16. Ending the call routes the user to a review screen.
-17. The user submits a lightweight review, which also updates local trust for the reviewed user and completes the request.
-18. Completing a reserved request also advances its payment placeholder state to `paid`.
-19. The user returns to the profile screen and can see review memory still reflected in the app.
-20. On later launches, the app goes straight to the profile screen if saved profile data exists.
-21. The user can reset the saved profile and return to onboarding.
+12. Operators can view nominated requests in an inbox and accept or decline them.
+13. The traveler request screen polls for request state and shows accepted, declined, pending, and selected operators.
+14. Once an operator accepts, the traveler can reserve that exact operator with an estimated session price.
+15. Reservation locks the request to one selected operator and finishes the marketplace-selection step.
+16. Traveler and selected operator can both move into a shared reserved-session handoff screen.
+17. Starting the session from the handoff screen moves the request into `in_call`.
+18. The call screen shows a short connecting state, then a connected state with a simple timer.
+19. Ending the call routes the user to a review screen.
+20. The user submits a lightweight review, which also updates local trust for the reviewed user and completes the request.
+21. Completing a reserved request also advances its payment placeholder state to `paid`.
+22. The user returns to the profile screen and can see review memory still reflected in the app.
+23. On later launches, the app goes straight to the profile screen if saved profile data exists.
+24. The user can reset the saved profile and return to onboarding.
 
 ## What Currently Works
 
@@ -74,12 +80,16 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Request screen lets users choose an intent, optional description, and urgency
 - Matching now ranks operators by intent fit, role relevance, trust score, and availability while keeping older profiles backward compatible
 - Request creation now produces nominations for the top 3 ranked operators
-- Request screen polls live request state and separates selected, accepted, and pending operators
+- Operator inbox now shows active nominated traveler requests for the saved local operator profile
+- Operator request detail now supports accept and decline responses through the existing nomination flow
+- Request screen polls live request state and separates selected, accepted, declined, and pending operators
 - Request screen supports pre-session cancellation and terminal-state messaging
 - Request screen now shows an estimated session price and a lightweight reservation step before call start
 - Accepted operators can be reserved through a payment placeholder flow before the session begins
+- Traveler request view now supports explicit operator selection before the session starts
 - Operator cards display roles, capabilities, trust, and human-readable reasons
-- Session start now locks one accepted operator to the request
+- Session start now requires a reserved selected operator and locks the request to that operator
+- Traveler and selected operator now share a lightweight reserved-session handoff screen before call
 - Completing a reserved request automatically moves its payment placeholder state to `paid`
 - Call screen simulates a basic call lifecycle with connecting and connected states
 - Call screen starts a simple MM:SS timer after the connected state begins
@@ -110,6 +120,8 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Request expiry and timeout are applied lazily instead of through a background worker
 - Pricing is fixed by intent and does not yet support operator-specific rates
 - Payment status is a structural placeholder and does not process or move real money
+- Operator identity still depends on the saved local profile because there is no auth layer
+- Reserved-session handoff is a lightweight state transition and not yet a true pre-call coordination layer
 - API validation is still intentionally light beyond required fields and array shape checks
 - Frontend profile state is stored only on-device
 
@@ -128,6 +140,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Minimal validation is still worth doing, even in an MVP, especially when profile data becomes more structured
 - The shift from static matching into request state creates a more credible coordination loop without requiring heavy infrastructure
 - Adding a reservation step creates a useful commitment layer before real payment rails exist
+- Adding operator inbox and explicit traveler selection makes the two-sided flow easier to understand without needing a full marketplace backend
 - Simpler routing decisions reduce friction during iteration
 - Stabilizing screen load behavior matters as much as feature work in small MVP flows
 - Small copy and usability improvements can make the app feel more like a product without changing the architecture
@@ -142,12 +155,12 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding, profile memory, local readiness, intent-based role matching, nomination, reservation, session locking, local trust, simulated call states, and the review loop are working in stable MVP form. The app now has a credible request-to-session backbone with an economic placeholder layer and remains in a tightening and QA-focused phase.
+Core onboarding, profile memory, local readiness, intent-based role matching, operator response handling, traveler selection, reservation, session handoff, session locking, local trust, simulated call states, and the review loop are working in stable MVP form. The app now has a credible two-sided request-to-session backbone with an economic placeholder layer and remains in a tightening and QA-focused phase.
 
 ## Next Steps
 
 - Refine rule-based matching quality within the current deterministic system
-- Continue tightening request lifecycle, nomination handling, reservation, session locking, trust, call, and review behavior for reliability
+- Continue tightening request lifecycle, operator response handling, reservation, session handoff, session locking, trust, call, and review behavior for reliability
 - Improve profile and match presentation without changing the core flow
 - Hold the architecture simple until the current loop feels consistently stable
 
@@ -158,13 +171,13 @@ Build the smallest useful version of the core user loop, make it reliable, and d
 ## System Boundaries
 
 - Reality vs simulation:
-  Profile data, request creation, role-based matching, nominations, reservation state, and session locking are real within the current app flow. The call layer is simulated and does not provide real audio. Reviews, trust, and saved state are local-only and stored on-device.
+  Profile data, request creation, role-based matching, operator nominations, traveler selection, reservation state, and session locking are real within the current app flow. The call layer is simulated and does not provide real audio. Reviews, trust, and saved state are local-only and stored on-device.
 - Single-device limitation:
   The current system behaves as a single-device simulation. There is no shared backend state that synchronizes user activity across devices.
 - Identity limitation:
   There is no authentication, and user identity is not persistent across devices or installs.
 - Interaction limitation:
-  There are no real audio sessions, and operator responses are still exercised through lightweight MVP request-state mechanics rather than a full operator product surface.
+  There are no real audio sessions, and operator responses plus reserved handoff are still exercised through lightweight MVP request-state mechanics rather than a full operator product surface.
 - Operator system missing:
   The current MVP supports dynamic support roles in matching, but not a separate authenticated operator application or workflow.
 - Platform limitations:
@@ -179,3 +192,6 @@ Build the smallest useful version of the core user loop, make it reliable, and d
 - Day 18: Session Locking & Commitment Layer
 - Day 19: Fulfillment Recovery + Expand Search + No-Show Handling
 - Day 20: Payment Placeholder & Reservation Layer
+- Day 21: Operator Inbox
+- Day 22: Operator Response & Traveler Selection
+- Day 23: Reserved Session State & Pre-Call Handoff

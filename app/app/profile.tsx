@@ -224,6 +224,14 @@ export default function ProfileScreen() {
                     Start a request to find available operators by intent.
                 </Text>
 
+                <Button
+                    title="Open operator inbox"
+                    onPress={() => router.push("/operator/inbox")}
+                />
+                <Text style={{ marginTop: 12, marginBottom: 12, color: "#444" }}>
+                    View traveler requests that are currently nominated to you.
+                </Text>
+
                 {latestReview ? (
                     <View style={{ marginTop: 24, marginBottom: 20 }}>
                         <Text style={{ fontSize: 22, marginBottom: 12 }}>Latest review</Text>

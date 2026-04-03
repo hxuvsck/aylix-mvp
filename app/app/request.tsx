@@ -4,19 +4,19 @@ import { Button, ScrollView, Text, TextInput, View } from "react-native";
 import {
     cancelRequest,
     expandRequest,
+    getRequestResponses,
     getRequestState,
     helpIntentOptions,
     matchHelpRequest,
     reportNoShow,
     reserveRequest,
     retryRequest,
-    startRequestSession,
     urgencyOptions,
-    type HelpRequestStatus,
     type HelpIntent,
     type HelpRequest,
-    type Match,
+    type HelpRequestStatus,
     type OperatorNomination,
+    type RequestResponseItem,
     type Urgency,
 } from "../lib/api";
 import {
@@ -31,7 +31,7 @@ type SavedProfile = {
     displayName?: string;
 };
 
-type MatchWithTrust = Match & {
+type ResponseWithTrust = RequestResponseItem & {
     reviewCount?: number;
 };
 
@@ -53,25 +53,63 @@ export default function RequestScreen() {
     const [urgency, setUrgency] = useState<Urgency>("medium");
     const [activeRequest, setActiveRequest] = useState<HelpRequest | null>(null);
     const [nominations, setNominations] = useState<OperatorNomination[]>([]);
-    const [selectedOperator, setSelectedOperator] = useState<MatchWithTrust | null>(null);
-    const [acceptedOperators, setAcceptedOperators] = useState<MatchWithTrust[]>([]);
-    const [pendingOperators, setPendingOperators] = useState<MatchWithTrust[]>([]);
+    const [selectedOperator, setSelectedOperator] = useState<ResponseWithTrust | null>(null);
+    const [acceptedOperators, setAcceptedOperators] = useState<ResponseWithTrust[]>([]);
+    const [pendingOperators, setPendingOperators] = useState<ResponseWithTrust[]>([]);
+    const [declinedOperators, setDeclinedOperators] = useState<ResponseWithTrust[]>([]);
     const [matchesError, setMatchesError] = useState("");
+    const [responsesError, setResponsesError] = useState("");
     const [isMatching, setIsMatching] = useState(false);
+    const [isLoadingResponses, setIsLoadingResponses] = useState(false);
     const [hasRequested, setHasRequested] = useState(false);
 
-    const hydrateMatchesWithTrust = async (matches: Match[]) =>
+    const hydrateResponsesWithTrust = async (responses: RequestResponseItem[]) =>
         Promise.all(
-            matches.map(async (match) => {
-                const trust = await getUserTrust(match.userId);
+            responses.map(async (response) => {
+                const trust = await getUserTrust(response.operatorId);
 
                 return {
-                    ...match,
-                    trustScore: trust.trustScore ?? match.trustScore ?? DEFAULT_TRUST_SCORE,
+                    ...response,
+                    trustScore: trust.trustScore ?? response.trustScore ?? DEFAULT_TRUST_SCORE,
                     reviewCount: trust.reviewCount ?? DEFAULT_REVIEW_COUNT,
                 };
             })
         );
+
+    const loadRequestView = async (requestId: string, userId?: string) => {
+        setIsLoadingResponses(true);
+        setResponsesError("");
+
+        try {
+            const [requestStateResponse, responsesResponse] = await Promise.all([
+                getRequestState(requestId),
+                getRequestResponses(requestId, userId),
+            ]);
+
+            const hydratedResponses = await hydrateResponsesWithTrust(responsesResponse.responses);
+            const selectedResponse =
+                hydratedResponses.find((response) => response.isSelected) ?? null;
+
+            setActiveRequest(requestStateResponse.request);
+            setNominations(requestStateResponse.nominations);
+            setSelectedOperator(selectedResponse);
+            setAcceptedOperators(
+                hydratedResponses.filter(
+                    (response) => response.nominationStatus === "accepted" && !response.isSelected
+                )
+            );
+            setPendingOperators(
+                hydratedResponses.filter((response) => response.nominationStatus === "pending")
+            );
+            setDeclinedOperators(
+                hydratedResponses.filter((response) => response.nominationStatus === "declined")
+            );
+        } catch (err: any) {
+            setResponsesError(err.message ?? "Could not load operator responses.");
+        } finally {
+            setIsLoadingResponses(false);
+        }
+    };
 
     useEffect(() => {
         const loadProfile = async () => {
@@ -87,46 +125,17 @@ export default function RequestScreen() {
             return;
         }
 
-        const pollRequestState = async () => {
-            try {
-                const response = await getRequestState(activeRequest.id);
-
-                const selectedOperatorResponse = response.selectedOperator;
-                const [selectedWithTrust, acceptedWithTrust, pendingWithTrust] = await Promise.all([
-                    selectedOperatorResponse
-                        ? getUserTrust(selectedOperatorResponse.userId).then((trust) => ({
-                              ...selectedOperatorResponse,
-                              trustScore: trust.trustScore ?? selectedOperatorResponse.trustScore ?? DEFAULT_TRUST_SCORE,
-                              reviewCount: trust.reviewCount ?? DEFAULT_REVIEW_COUNT,
-                          }))
-                        : Promise.resolve(null),
-                    hydrateMatchesWithTrust(response.acceptedOperators),
-                    hydrateMatchesWithTrust(response.pendingOperators),
-                ]);
-
-                setActiveRequest(response.request);
-                setNominations(response.nominations);
-                setSelectedOperator(selectedWithTrust);
-                setAcceptedOperators(acceptedWithTrust);
-                setPendingOperators(pendingWithTrust);
-            } catch (err: any) {
-                setMatchesError(err.message ?? "Could not refresh request state.");
-            }
-        };
-
         const intervalId = setInterval(() => {
-            void pollRequestState();
+            void loadRequestView(activeRequest.id, profile?.userId);
         }, 2500);
 
         return () => {
             clearInterval(intervalId);
         };
-    }, [activeRequest?.id, activeRequest?.status]);
+    }, [activeRequest?.id, activeRequest?.status, profile?.userId]);
 
     const handleFindOperators = async () => {
         if (!profile?.userId) {
-            setAcceptedOperators([]);
-            setPendingOperators([]);
             setMatchesError("Profile is missing a user ID.");
             return;
         }
@@ -143,16 +152,15 @@ export default function RequestScreen() {
                 urgency,
             });
 
-            const matchesWithTrust = await hydrateMatchesWithTrust(response.operators);
-
             setActiveRequest(response.request);
             setNominations(response.nominations);
             setSelectedOperator(null);
             setAcceptedOperators([]);
-            setPendingOperators(matchesWithTrust);
-        } catch (err: any) {
-            setAcceptedOperators([]);
             setPendingOperators([]);
+            setDeclinedOperators([]);
+
+            await loadRequestView(response.request.id, profile.userId);
+        } catch (err: any) {
             setMatchesError(err.message ?? "Could not load operators.");
         } finally {
             setIsMatching(false);
@@ -167,96 +175,77 @@ export default function RequestScreen() {
         try {
             setMatchesError("");
             const response = await expandRequest(activeRequest.id);
-            const operatorsWithTrust = await hydrateMatchesWithTrust(response.operators);
-
             setActiveRequest(response.request);
             setNominations(response.nominations);
-            setSelectedOperator(null);
-            setAcceptedOperators([]);
-            setPendingOperators(operatorsWithTrust);
+            await loadRequestView(response.request.id, profile?.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not expand search.");
         }
     };
 
     const handleRetryRequest = async () => {
-        if (!activeRequest?.id) {
+        if (!activeRequest?.id || !profile?.userId) {
             return;
         }
 
         try {
             setMatchesError("");
             const response = await retryRequest(activeRequest.id);
-            const operatorsWithTrust = await hydrateMatchesWithTrust(response.operators);
-
             setHasRequested(true);
             setActiveRequest(response.request);
             setNominations(response.nominations);
-            setSelectedOperator(null);
-            setAcceptedOperators([]);
-            setPendingOperators(operatorsWithTrust);
+            await loadRequestView(response.request.id, profile.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not retry request.");
         }
     };
 
-    const handleStartCall = async (match: Match) => {
-        if (!activeRequest?.id) {
-            return;
-        }
-
-        const response = await startRequestSession(activeRequest.id, match.userId);
-        const trust = await getUserTrust(match.userId);
-        const selectedMatch = {
-            ...match,
-            trustScore: trust.trustScore ?? match.trustScore ?? DEFAULT_TRUST_SCORE,
-            reviewCount: trust.reviewCount ?? DEFAULT_REVIEW_COUNT,
-        };
-
-        setActiveRequest(response.request);
-        setNominations(response.nominations);
-        setSelectedOperator(selectedMatch);
-        setAcceptedOperators([]);
-        setPendingOperators([]);
-
-        router.push({
-            pathname: "/call",
-            params: {
-                requestId: activeRequest?.id ?? "",
-                userId: match.userId,
-                displayName: match.displayName,
-                city: match.city ?? "",
-                score: String(match.score),
-                reasons: JSON.stringify(match.reasons ?? []),
-            },
-        });
-    };
-
-    const handleReserveAndContinue = async (match: Match) => {
-        if (!activeRequest?.id) {
+    const handleSelectOperator = async (response: ResponseWithTrust) => {
+        if (!activeRequest?.id || !profile?.userId) {
             return;
         }
 
         try {
-            const response = await reserveRequest(activeRequest.id);
-            setActiveRequest(response.request);
-            setNominations(response.nominations);
-            await handleStartCall(match);
+            setResponsesError("");
+            const reserveResponse = await reserveRequest(activeRequest.id, {
+                operatorId: response.operatorId,
+                userId: profile.userId,
+            });
+            setActiveRequest(reserveResponse.request);
+            setNominations(reserveResponse.nominations);
+            await loadRequestView(reserveResponse.request.id, profile.userId);
         } catch (err: any) {
-            setMatchesError(err.message ?? "Could not reserve this session.");
+            setResponsesError(err.message ?? "Could not select this operator.");
         }
     };
 
-    const handleOpenCall = (match: Match) => {
+    const handleContinueToSession = () => {
+        if (!activeRequest?.id || !selectedOperator) {
+            return;
+        }
+
+        router.push({
+            pathname: "/session",
+            params: {
+                requestId: activeRequest.id,
+            },
+        });
+    };
+
+    const handleOpenCall = () => {
+        if (!activeRequest?.id || !selectedOperator) {
+            return;
+        }
+
         router.push({
             pathname: "/call",
             params: {
-                requestId: activeRequest?.id ?? "",
-                userId: match.userId,
-                displayName: match.displayName,
-                city: match.city ?? "",
-                score: String(match.score),
-                reasons: JSON.stringify(match.reasons ?? []),
+                requestId: activeRequest.id,
+                userId: selectedOperator.operatorId,
+                displayName: selectedOperator.displayName,
+                city: selectedOperator.city ?? "",
+                score: "0",
+                reasons: JSON.stringify(selectedOperator.reasons ?? []),
             },
         });
     };
@@ -270,26 +259,22 @@ export default function RequestScreen() {
             const response = await cancelRequest(activeRequest.id);
             setActiveRequest(response.request);
             setNominations(response.nominations);
-            setSelectedOperator(null);
-            setAcceptedOperators([]);
-            setPendingOperators([]);
+            await loadRequestView(response.request.id, profile?.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not cancel request.");
         }
     };
 
     const handleReportNoShow = async () => {
-        if (!activeRequest?.id || !selectedOperator?.userId) {
+        if (!activeRequest?.id || !selectedOperator?.operatorId) {
             return;
         }
 
         try {
-            const response = await reportNoShow(activeRequest.id, selectedOperator.userId);
+            const response = await reportNoShow(activeRequest.id, selectedOperator.operatorId);
             setActiveRequest(response.request);
             setNominations(response.nominations);
-            setSelectedOperator(null);
-            setAcceptedOperators([]);
-            setPendingOperators([]);
+            await loadRequestView(response.request.id, profile?.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not report no-show.");
         }
@@ -315,6 +300,11 @@ export default function RequestScreen() {
         activeRequest && activeRequest.retryCount > 0
             ? `Expanded search • Retry attempt ${activeRequest.retryCount}`
             : "";
+    const hasAnyResponses =
+        selectedOperator !== null ||
+        acceptedOperators.length > 0 ||
+        pendingOperators.length > 0 ||
+        declinedOperators.length > 0;
 
     if (isLoadingProfile) {
         return (
@@ -401,7 +391,9 @@ export default function RequestScreen() {
                 ) : null}
 
                 {activeRequest?.paymentStatus === "reserved" ? (
-                    <Text style={{ marginTop: 8, color: "#444" }}>Session reserved</Text>
+                    <Text style={{ marginTop: 8, color: "#444" }}>
+                        Payment status: reserved
+                    </Text>
                 ) : null}
 
                 {retryLabel ? <Text style={{ marginTop: 8, color: "#444" }}>{retryLabel}</Text> : null}
@@ -433,9 +425,15 @@ export default function RequestScreen() {
 
                 {selectedOperator ? (
                     <>
-                        <Text style={{ fontSize: 22, marginTop: 24, marginBottom: 12 }}>Active session</Text>
+                        <Text style={{ fontSize: 22, marginTop: 24, marginBottom: 12 }}>
+                            {activeRequest?.status === "in_call" ? "Active session" : "Operator selected"}
+                        </Text>
                         <View style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 10 }}>
                             <Text style={{ fontSize: 16, marginBottom: 4 }}>{selectedOperator.displayName}</Text>
+                            <Text style={{ marginBottom: 4 }}>Location: {selectedOperator.city || "Unknown"}</Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Languages: {(selectedOperator.languages ?? []).join(", ") || "None set"}
+                            </Text>
                             <Text style={{ marginBottom: 4 }}>
                                 Roles: {(selectedOperator.roles ?? []).join(", ") || "None set"}
                             </Text>
@@ -443,14 +441,31 @@ export default function RequestScreen() {
                                 Capabilities: {(selectedOperator.capabilities ?? []).join(", ") || "None set"}
                             </Text>
                             <Text style={{ marginBottom: 4 }}>
+                                Status: {activeRequest?.paymentStatus === "reserved" ? "Reserved" : "Selected"} • Payment {activeRequest?.paymentStatus ?? "none"}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Request lock: {activeRequest?.selectedOperatorId ? "Locked to this operator" : "Not locked yet"}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Intent: {activeRequest ? intentLabels[activeRequest.intent] : "Unknown"}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Session info: {activeRequest?.quotedAmount !== undefined ? `$${activeRequest.quotedAmount} ${activeRequest.currency}` : "Not quoted"} • service handoff ready
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
                                 Trust: ⭐ {selectedOperator.trustScore ?? DEFAULT_TRUST_SCORE} ({selectedOperator.reviewCount ?? DEFAULT_REVIEW_COUNT} reviews)
                             </Text>
                             <Text style={{ marginBottom: 12 }}>
-                                Reasons: {(selectedOperator.reasons ?? []).join(", ") || "No reasons available"}
+                                Reasons: {selectedOperator.reasons.join(", ") || "No reasons available"}
                             </Text>
+                            {!isTerminal && activeRequest?.paymentStatus === "reserved" && activeRequest.status !== "in_call" ? (
+                                <View style={{ marginBottom: 8 }}>
+                                    <Button title="Continue to session" onPress={handleContinueToSession} />
+                                </View>
+                            ) : null}
                             {!isTerminal && activeRequest?.status === "in_call" ? (
                                 <View style={{ marginBottom: 8 }}>
-                                    <Button title="Call" onPress={() => handleOpenCall(selectedOperator)} />
+                                    <Button title="Call" onPress={handleOpenCall} />
                                 </View>
                             ) : null}
                             {activeRequest?.status === "in_call" ? (
@@ -460,77 +475,117 @@ export default function RequestScreen() {
                     </>
                 ) : null}
 
-                <Text style={{ fontSize: 22, marginTop: 24, marginBottom: 12 }}>Accepted operators</Text>
+                <Text style={{ fontSize: 22, marginTop: 24, marginBottom: 12 }}>Operator responses</Text>
 
                 {matchesError ? <Text style={{ marginBottom: 12 }}>ERROR: {matchesError}</Text> : null}
-
-                {!matchesError && !isMatching && hasRequested && acceptedOperators.length === 0 ? (
-                    <Text style={{ marginBottom: 20, color: "#444" }}>No operator has accepted yet.</Text>
+                {responsesError ? (
+                    <View style={{ marginBottom: 12 }}>
+                        <Text style={{ marginBottom: 8 }}>ERROR: {responsesError}</Text>
+                        {activeRequest?.id ? (
+                            <Button
+                                title="Retry responses"
+                                onPress={() => void loadRequestView(activeRequest.id, profile.userId)}
+                            />
+                        ) : null}
+                    </View>
+                ) : null}
+                {isLoadingResponses ? (
+                    <Text style={{ marginBottom: 12, color: "#444" }}>Loading operator responses...</Text>
+                ) : null}
+                {!responsesError && !isLoadingResponses && hasRequested && !hasAnyResponses ? (
+                    <View style={{ marginBottom: 20 }}>
+                        <Text style={{ fontSize: 18, marginBottom: 8 }}>No operator responses yet</Text>
+                        <Text style={{ color: "#444" }}>
+                            Responses from nominated operators will appear here.
+                        </Text>
+                    </View>
                 ) : null}
 
-                {!matchesError && !isMatching && acceptedOperators.length > 0
-                    ? acceptedOperators.map((match) => (
-                          <View
-                              key={match.userId}
-                              style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 10 }}
-                          >
-                              <Text style={{ fontSize: 16, marginBottom: 4 }}>{match.displayName}</Text>
-                              <Text style={{ marginBottom: 4 }}>Roles: {(match.roles ?? []).join(", ") || "None set"}</Text>
-                              <Text style={{ marginBottom: 4 }}>
-                                  Capabilities: {(match.capabilities ?? []).join(", ") || "None set"}
-                              </Text>
-                              <Text style={{ marginBottom: 4 }}>
-                                  Trust: ⭐ {match.trustScore ?? DEFAULT_TRUST_SCORE} ({match.reviewCount ?? DEFAULT_REVIEW_COUNT} reviews)
-                              </Text>
-                              <Text style={{ marginBottom: 12 }}>
-                                  Reasons: {(match.reasons ?? []).join(", ") || "No reasons available"}
-                              </Text>
-                              {!isTerminal && activeRequest?.paymentStatus === "quoted" ? (
-                                  <View style={{ marginBottom: 8 }}>
-                                      <Button
-                                          title="Confirm & Continue"
-                                          onPress={() => void handleReserveAndContinue(match)}
-                                      />
-                                  </View>
-                              ) : null}
-                              {!isTerminal &&
-                              (activeRequest?.paymentStatus === "reserved" || activeRequest?.paymentStatus === "none") ? (
-                                  <Button title="Call" onPress={() => void handleStartCall(match)} />
-                              ) : null}
-                          </View>
-                      ))
-                    : null}
-
-                <Text style={{ fontSize: 22, marginTop: 24, marginBottom: 12 }}>Available operators</Text>
-
-                {!matchesError && !isMatching && hasRequested && acceptedOperators.length === 0 && pendingOperators.length === 0 ? (
-                    <Text style={{ marginBottom: 20, color: "#444" }}>
-                        No one accepted yet. Try again or expand search.
+                <Text style={{ fontSize: 20, marginTop: 12, marginBottom: 12 }}>Available operators to choose</Text>
+                {!responsesError && !isLoadingResponses && acceptedOperators.length === 0 ? (
+                    <Text style={{ marginBottom: 16, color: "#444" }}>
+                        No accepted operators yet.
                     </Text>
                 ) : null}
+                {acceptedOperators.map((response) => (
+                    <View
+                        key={response.operatorId}
+                        style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 10 }}
+                    >
+                        <Text style={{ fontSize: 16, marginBottom: 4 }}>{response.displayName}</Text>
+                        <Text style={{ marginBottom: 4 }}>Location: {response.city || "Unknown"}</Text>
+                        <Text style={{ marginBottom: 4 }}>
+                            Languages: {(response.languages ?? []).join(", ") || "None set"}
+                        </Text>
+                        <Text style={{ marginBottom: 4 }}>
+                            Roles: {(response.roles ?? []).join(", ") || "None set"}
+                        </Text>
+                        <Text style={{ marginBottom: 4 }}>
+                            Capabilities: {(response.capabilities ?? []).join(", ") || "None set"}
+                        </Text>
+                        <Text style={{ marginBottom: 4 }}>Status: Accepted</Text>
+                        <Text style={{ marginBottom: 4 }}>
+                            Trust: ⭐ {response.trustScore ?? DEFAULT_TRUST_SCORE} ({response.reviewCount ?? DEFAULT_REVIEW_COUNT} reviews)
+                        </Text>
+                        <Text style={{ marginBottom: 12 }}>
+                            Reasons: {response.reasons.join(", ") || "No reasons available"}
+                        </Text>
+                        {response.selectable && activeRequest?.paymentStatus === "quoted" ? (
+                            <Button
+                                title="Select operator"
+                                onPress={() => void handleSelectOperator(response)}
+                            />
+                        ) : (
+                            <Text style={{ color: "#444" }}>
+                                {selectedOperator ? "Selection finished" : "Waiting for selection to open"}
+                            </Text>
+                        )}
+                    </View>
+                ))}
 
-                {!matchesError && !isMatching && pendingOperators.length > 0
-                    ? pendingOperators.map((match) => (
-                          <View
-                              key={match.userId}
-                              style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 10 }}
-                          >
-                              <Text style={{ fontSize: 16, marginBottom: 4 }}>{match.displayName}</Text>
-                              <Text style={{ marginBottom: 4 }}>Roles: {(match.roles ?? []).join(", ") || "None set"}</Text>
-                              <Text style={{ marginBottom: 4 }}>
-                                  Capabilities: {(match.capabilities ?? []).join(", ") || "None set"}
-                              </Text>
-                              <Text style={{ marginBottom: 4 }}>
-                                  Trust: ⭐ {match.trustScore ?? DEFAULT_TRUST_SCORE} ({match.reviewCount ?? DEFAULT_REVIEW_COUNT} reviews)
-                              </Text>
-                              <Text style={{ marginBottom: 12 }}>
-                                  Reasons: {(match.reasons ?? []).join(", ") || "No reasons available"}
-                              </Text>
-                          </View>
-                      ))
-                    : null}
+                <Text style={{ fontSize: 20, marginTop: 16, marginBottom: 12 }}>Pending operators</Text>
+                {!responsesError && !isLoadingResponses && pendingOperators.length === 0 ? (
+                    <Text style={{ marginBottom: 16, color: "#444" }}>
+                        No pending operators right now.
+                    </Text>
+                ) : null}
+                {pendingOperators.map((response) => (
+                    <View
+                        key={response.operatorId}
+                        style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 10 }}
+                    >
+                        <Text style={{ fontSize: 16, marginBottom: 4 }}>{response.displayName}</Text>
+                        <Text style={{ marginBottom: 4 }}>Status: Pending</Text>
+                        <Text style={{ marginBottom: 4 }}>Location: {response.city || "Unknown"}</Text>
+                        <Text>
+                            Reasons: {response.reasons.join(", ") || "No reasons available"}
+                        </Text>
+                    </View>
+                ))}
 
-                <Button title="Back to profile" onPress={() => router.replace("/profile")} />
+                <Text style={{ fontSize: 20, marginTop: 16, marginBottom: 12 }}>Declined operators</Text>
+                {!responsesError && !isLoadingResponses && declinedOperators.length === 0 ? (
+                    <Text style={{ marginBottom: 16, color: "#444" }}>
+                        No operators have declined yet.
+                    </Text>
+                ) : null}
+                {declinedOperators.map((response) => (
+                    <View
+                        key={response.operatorId}
+                        style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 10 }}
+                    >
+                        <Text style={{ fontSize: 16, marginBottom: 4 }}>{response.displayName}</Text>
+                        <Text style={{ marginBottom: 4 }}>Status: Declined</Text>
+                        <Text style={{ marginBottom: 4 }}>Location: {response.city || "Unknown"}</Text>
+                        <Text>
+                            Reasons: {response.reasons.join(", ") || "No reasons available"}
+                        </Text>
+                    </View>
+                ))}
+
+                <View style={{ marginTop: 20 }}>
+                    <Button title="Back to profile" onPress={() => router.replace("/profile")} />
+                </View>
             </View>
         </ScrollView>
     );

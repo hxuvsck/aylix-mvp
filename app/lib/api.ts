@@ -109,6 +109,7 @@ export type OperatorNomination = {
   operatorId: string;
   status: NominationStatus;
   createdAt: string;
+  respondedAt?: string;
 };
 
 export type MatchHelpRequestInput = {
@@ -137,6 +138,84 @@ export type RequestStateResponse = {
   selectedOperator: Match | null;
   acceptedOperators: Match[];
   pendingOperators: Match[];
+};
+
+export type RequestResponseItem = {
+  operatorId: string;
+  operatorProfileId?: string;
+  displayName: string;
+  city?: string;
+  languages?: string[];
+  roles?: Role[];
+  capabilities?: string[];
+  trustScore?: number;
+  nominationStatus: NominationStatus;
+  respondedAt?: string;
+  requestStatus: HelpRequestStatus;
+  selectable: boolean;
+  isSelected: boolean;
+  reasons: string[];
+};
+
+export type RequestResponsesResponse = {
+  request: HelpRequest;
+  responses: RequestResponseItem[];
+};
+
+export type ReservedSessionSummary = {
+  requestId: string;
+  requestStatus: HelpRequestStatus;
+  paymentStatus: PaymentStatus;
+  selectedOperatorId?: string;
+  traveler: {
+    userId: string;
+    displayName: string;
+    city?: string;
+    languages?: string[];
+  };
+  operator: {
+    userId: string;
+    displayName: string;
+    city?: string;
+    languages?: string[];
+    roles?: Role[];
+    capabilities?: string[];
+    trustScore?: number;
+  } | null;
+  intent: HelpIntent;
+  description?: string;
+  quotedAmount?: number;
+  currency: string;
+  estimatedDurationMinutes?: number;
+  locationSummary: string;
+  viewerRole: "traveler" | "operator" | "other";
+  isSelectedOperator: boolean;
+};
+
+export type ReservedSessionSummaryResponse = {
+  summary: ReservedSessionSummary;
+};
+
+export type OperatorInboxItem = {
+  requestId: string;
+  travelerUserId: string;
+  travelerDisplayName?: string;
+  travelerCity?: string;
+  locationSummary: string;
+  intent: HelpIntent;
+  description?: string;
+  quotedAmount?: number;
+  currency: string;
+  estimatedDurationMinutes?: number;
+  paymentStatus: PaymentStatus;
+  requestStatus: HelpRequestStatus;
+  createdAt: string;
+  acceptedOperatorsCount: number;
+  nominationStatus: NominationStatus;
+};
+
+type OperatorInboxResponse = {
+  requests: OperatorInboxItem[];
 };
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -200,10 +279,13 @@ export function respondToRequest(
   });
 }
 
-export function startRequestSession(requestId: string, operatorId: string) {
+export function startRequestSession(
+  requestId: string,
+  input: { operatorId: string; userId?: string }
+) {
   return request<RequestStateResponse>(`/requests/${requestId}/start`, {
     method: "POST",
-    body: { operatorId },
+    body: input,
   });
 }
 
@@ -220,9 +302,13 @@ export function cancelRequest(requestId: string, reason?: string) {
   });
 }
 
-export function reserveRequest(requestId: string) {
+export function reserveRequest(
+  requestId: string,
+  input: { operatorId: string; userId?: string }
+) {
   return request<RequestStateResponse>(`/requests/${requestId}/reserve`, {
     method: "POST",
+    body: input,
   });
 }
 
@@ -249,4 +335,20 @@ export function refundRequest(requestId: string) {
   return request<RequestStateResponse>(`/requests/${requestId}/refund`, {
     method: "POST",
   });
+}
+
+export function getOperatorInbox(operatorId: string) {
+  return request<OperatorInboxResponse>(
+    `/operator/requests?operatorId=${encodeURIComponent(operatorId)}`
+  );
+}
+
+export function getRequestResponses(requestId: string, userId?: string) {
+  const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return request<RequestResponsesResponse>(`/requests/${requestId}/responses${query}`);
+}
+
+export function getReservedSessionSummary(requestId: string, userId?: string) {
+  const query = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+  return request<ReservedSessionSummaryResponse>(`/requests/${requestId}/summary${query}`);
 }
