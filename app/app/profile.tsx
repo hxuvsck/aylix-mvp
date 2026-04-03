@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { Button, ScrollView, Text, View } from "react-native";
-import { getMatches, type Match } from "../lib/api";
 import {
     clearSavedProfile,
-    DEFAULT_REVIEW_COUNT,
-    DEFAULT_TRUST_SCORE,
     getLatestReview,
     getSavedProfile,
-    getUserTrust,
     type LatestReview,
 } from "../lib/storage";
 
@@ -16,19 +12,16 @@ type ProfileData = {
     userId?: string;
     displayName?: string;
     isAvailable?: boolean;
+    roles?: string[];
+    capabilities?: string[];
+    personality?: string[];
+    trustScore?: number;
     city?: string;
     languages?: string[];
     interests?: string[];
     vibeTags?: string[];
     travelStyle?: string[];
     helpTopics?: string[];
-    trustScore?: number;
-    reviewCount?: number;
-};
-
-type MatchWithTrust = Match & {
-    trustScore?: number;
-    reviewCount?: number;
 };
 
 function safeParseArray(value?: string) {
@@ -59,6 +52,16 @@ function getBooleanParam(value?: string | string[]) {
     return undefined;
 }
 
+function getNumberParam(value?: string | string[]) {
+    const param = getSingleParam(value);
+    if (!param) {
+        return undefined;
+    }
+
+    const parsed = Number(param);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function normalizeProfile(profile?: ProfileData | null) {
     if (!profile) {
         return null;
@@ -67,8 +70,10 @@ function normalizeProfile(profile?: ProfileData | null) {
     return {
         ...profile,
         isAvailable: profile.isAvailable ?? true,
-        trustScore: profile.trustScore ?? DEFAULT_TRUST_SCORE,
-        reviewCount: profile.reviewCount ?? DEFAULT_REVIEW_COUNT,
+        roles: profile.roles ?? [],
+        capabilities: profile.capabilities ?? [],
+        personality: profile.personality ?? [],
+        trustScore: profile.trustScore ?? 0,
     };
 }
 
@@ -77,6 +82,10 @@ export default function ProfileScreen() {
         userId?: string | string[];
         displayName?: string | string[];
         isAvailable?: string | string[];
+        roles?: string | string[];
+        capabilities?: string | string[];
+        personality?: string | string[];
+        trustScore?: string | string[];
         city?: string | string[];
         languages?: string | string[];
         interests?: string | string[];
@@ -88,9 +97,6 @@ export default function ProfileScreen() {
     const [profile, setProfile] = useState<ProfileData | null>(null);
     const [latestReview, setLatestReview] = useState<LatestReview | null>(null);
     const [isLoadingProfile, setIsLoadingProfile] = useState(true);
-    const [matches, setMatches] = useState<MatchWithTrust[]>([]);
-    const [matchesError, setMatchesError] = useState("");
-    const [isFindingMatches, setIsFindingMatches] = useState(false);
 
     useEffect(() => {
         const loadProfile = async () => {
@@ -98,6 +104,10 @@ export default function ProfileScreen() {
                 userId: rawUserId,
                 displayName: rawDisplayName,
                 isAvailable: rawIsAvailable,
+                roles: rawRoles,
+                capabilities: rawCapabilities,
+                personality: rawPersonality,
+                trustScore: rawTrustScore,
                 city: rawCity,
                 languages: rawLanguages,
                 interests: rawInterests,
@@ -109,6 +119,10 @@ export default function ProfileScreen() {
             const userId = getSingleParam(rawUserId);
             const displayName = getSingleParam(rawDisplayName);
             const isAvailable = getBooleanParam(rawIsAvailable);
+            const roles = safeParseArray(getSingleParam(rawRoles));
+            const capabilities = safeParseArray(getSingleParam(rawCapabilities));
+            const personality = safeParseArray(getSingleParam(rawPersonality));
+            const trustScore = getNumberParam(rawTrustScore);
             const city = getSingleParam(rawCity);
             const languages = getSingleParam(rawLanguages);
             const interests = getSingleParam(rawInterests);
@@ -122,6 +136,10 @@ export default function ProfileScreen() {
                         userId,
                         displayName,
                         isAvailable,
+                        roles,
+                        capabilities,
+                        personality,
+                        trustScore,
                         city,
                         languages: safeParseArray(languages),
                         interests: safeParseArray(interests),
@@ -147,52 +165,6 @@ export default function ProfileScreen() {
     const handleReset = async () => {
         await clearSavedProfile();
         router.replace("/onboarding");
-    };
-
-    const handleFindMatches = async () => {
-        if (!profile?.userId) {
-            setMatches([]);
-            setMatchesError("Profile is missing a user ID.");
-            return;
-        }
-
-        try {
-            setIsFindingMatches(true);
-            setMatchesError("");
-
-            const response = await getMatches(profile.userId);
-            const matchesWithTrust = await Promise.all(
-                response.matches.map(async (match) => {
-                    const trust = await getUserTrust(match.userId);
-
-                    return {
-                        ...match,
-                        trustScore: trust.trustScore,
-                        reviewCount: trust.reviewCount,
-                    };
-                })
-            );
-
-            setMatches(matchesWithTrust);
-        } catch (err: any) {
-            setMatches([]);
-            setMatchesError(err.message ?? "Could not load matches.");
-        } finally {
-            setIsFindingMatches(false);
-        }
-    };
-
-    const handleStartCall = (match: Match) => {
-        router.push({
-            pathname: "/call",
-            params: {
-                userId: match.userId,
-                displayName: match.displayName,
-                city: match.city ?? "",
-                score: String(match.score),
-                reasons: JSON.stringify(match.reasons ?? []),
-            },
-        });
     };
 
     if (isLoadingProfile) {
@@ -231,6 +203,13 @@ export default function ProfileScreen() {
                     Availability: {profile.isAvailable === false ? "Not available" : "Available to help"}
                 </Text>
                 <Text style={{ marginBottom: 8 }}>City: {profile.city}</Text>
+                <Text style={{ marginBottom: 8 }}>Roles: {(profile.roles ?? []).join(", ") || "None set"}</Text>
+                <Text style={{ marginBottom: 8 }}>
+                    Capabilities: {(profile.capabilities ?? []).join(", ") || "None set"}
+                </Text>
+                <Text style={{ marginBottom: 8 }}>
+                    Personality: {(profile.personality ?? []).join(", ") || "None set"}
+                </Text>
                 <Text style={{ marginBottom: 8 }}>Languages: {(profile.languages ?? []).join(", ")}</Text>
                 <Text style={{ marginBottom: 8 }}>Interests: {(profile.interests ?? []).join(", ")}</Text>
                 <Text style={{ marginBottom: 8 }}>Vibe: {(profile.vibeTags ?? []).join(", ")}</Text>
@@ -238,40 +217,12 @@ export default function ProfileScreen() {
                 <Text style={{ marginBottom: 20 }}>Help topics: {(profile.helpTopics ?? []).join(", ")}</Text>
 
                 <Button
-                    title={isFindingMatches ? "Finding matches..." : "Find Matches"}
-                    onPress={handleFindMatches}
-                    disabled={isFindingMatches}
+                    title="What do you need?"
+                    onPress={() => router.push("/request")}
                 />
-                {isFindingMatches ? (
-                    <Text style={{ marginTop: 12, color: "#444" }}>Looking for strong matches...</Text>
-                ) : null}
-
-                <Text style={{ fontSize: 22, marginTop: 24, marginBottom: 12 }}>Top matches</Text>
-
-                {matchesError ? <Text style={{ marginBottom: 12 }}>ERROR: {matchesError}</Text> : null}
-
-                {!matchesError && !isFindingMatches && matches.length === 0 ? (
-                    <Text style={{ marginBottom: 20, color: "#444" }}>
-                        No strong matches yet. Try adjusting your profile or create more users.
-                    </Text>
-                ) : null}
-
-                {!matchesError && !isFindingMatches && matches.length > 0 ? matches.map((match) => (
-                    <View
-                        key={match.userId}
-                        style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 10 }}
-                    >
-                        <Text style={{ fontSize: 16, marginBottom: 4 }}>{match.displayName}</Text>
-                        <Text style={{ marginBottom: 4 }}>City: {match.city ?? "Unknown"}</Text>
-                        <Text style={{ marginBottom: 4 }}>Available now</Text>
-                        <Text style={{ marginBottom: 4 }}>Score: {match.score}</Text>
-                        <Text style={{ marginBottom: 4 }}>
-                            ⭐ {match.trustScore ?? DEFAULT_TRUST_SCORE} ({match.reviewCount ?? DEFAULT_REVIEW_COUNT} reviews)
-                        </Text>
-                        <Text style={{ marginBottom: 12 }}>Reasons: {(match.reasons ?? []).join(", ")}</Text>
-                        <Button title="Start Call" onPress={() => handleStartCall(match)} />
-                    </View>
-                )) : null}
+                <Text style={{ marginTop: 12, marginBottom: 12, color: "#444" }}>
+                    Start a request to find available operators by intent.
+                </Text>
 
                 {latestReview ? (
                     <View style={{ marginTop: 24, marginBottom: 20 }}>

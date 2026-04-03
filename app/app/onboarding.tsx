@@ -1,13 +1,16 @@
 import { router } from "expo-router";
 import { useState } from "react";
 import { Button, ScrollView, Text, TextInput, View } from "react-native";
-import { createProfile, createUser } from "../lib/api";
+import { capabilitiesOptions, createProfile, createUser, personalityOptions, roleOptions } from "../lib/api";
 import { saveProfile } from "../lib/storage";
 
 export default function OnboardingScreen() {
     const [name, setName] = useState("");
     const [city, setCity] = useState("");
     const [isAvailable, setIsAvailable] = useState(true);
+    const [roles, setRoles] = useState<(typeof roleOptions)[number][]>([]);
+    const [capabilities, setCapabilities] = useState<string[]>([]);
+    const [personality, setPersonality] = useState<string[]>([]);
     const [languages, setLanguages] = useState("");
     const [interests, setInterests] = useState("");
     const [vibe, setVibe] = useState("");
@@ -23,6 +26,12 @@ export default function OnboardingScreen() {
             .filter(Boolean);
     }
 
+    function toggleSelection<T extends string>(value: T, selected: T[], setSelected: (next: T[]) => void) {
+        setSelected(
+            selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value]
+        );
+    }
+
     const handleCreate = async () => {
         try {
             setIsSubmitting(true);
@@ -36,6 +45,9 @@ export default function OnboardingScreen() {
                 userId: user.id,
                 displayName: name || "Anonymous",
                 isAvailable,
+                roles,
+                capabilities,
+                personality,
                 city,
                 languages: splitCommaSeparatedValues(languages),
                 interests: splitCommaSeparatedValues(interests),
@@ -53,6 +65,9 @@ export default function OnboardingScreen() {
                     userId: profile.userId,
                     displayName: profile.displayName,
                     isAvailable: profile.isAvailable === false ? "false" : "true",
+                    roles: JSON.stringify(profile.roles ?? []),
+                    capabilities: JSON.stringify(profile.capabilities ?? []),
+                    personality: JSON.stringify(profile.personality ?? []),
                     city: profile.city ?? "",
                     languages: JSON.stringify(profile.languages ?? []),
                     interests: JSON.stringify(profile.interests ?? []),
@@ -102,6 +117,42 @@ export default function OnboardingScreen() {
                         title={isAvailable ? "Set as not available" : "Set as available"}
                         onPress={() => setIsAvailable((current) => !current)}
                     />
+                </View>
+
+                <Text style={{ marginBottom: 8 }}>Roles</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
+                    {roleOptions.map((role) => (
+                        <View key={role} style={{ marginRight: 8, marginBottom: 8 }}>
+                            <Button
+                                title={roles.includes(role) ? `${role} selected` : role}
+                                onPress={() => toggleSelection(role, roles, setRoles)}
+                            />
+                        </View>
+                    ))}
+                </View>
+
+                <Text style={{ marginBottom: 8 }}>Capabilities</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
+                    {capabilitiesOptions.map((capability) => (
+                        <View key={capability} style={{ marginRight: 8, marginBottom: 8 }}>
+                            <Button
+                                title={capabilities.includes(capability) ? `${capability} selected` : capability}
+                                onPress={() => toggleSelection(capability, capabilities, setCapabilities)}
+                            />
+                        </View>
+                    ))}
+                </View>
+
+                <Text style={{ marginBottom: 8 }}>Personality</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
+                    {personalityOptions.map((trait) => (
+                        <View key={trait} style={{ marginRight: 8, marginBottom: 8 }}>
+                            <Button
+                                title={personality.includes(trait) ? `${trait} selected` : trait}
+                                onPress={() => toggleSelection(trait, personality, setPersonality)}
+                            />
+                        </View>
+                    ))}
                 </View>
 
                 <TextInput

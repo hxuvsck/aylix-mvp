@@ -5,6 +5,18 @@ import cors from "cors";
 const app = express();
 const PORT = 4000;
 
+const roleValues = ["guide", "local", "expert", "companion"] as const;
+const helpIntentValues = ["food", "navigation", "translation", "explore", "emergency"] as const;
+const urgencyValues = ["low", "medium", "high"] as const;
+const helpRequestStatusValues = ["open", "nominated", "accepted", "in_call", "completed", "cancelled"] as const;
+const nominationStatusValues = ["pending", "accepted", "declined", "expired"] as const;
+
+type Role = (typeof roleValues)[number];
+type HelpIntent = (typeof helpIntentValues)[number];
+type Urgency = (typeof urgencyValues)[number];
+type HelpRequestStatus = (typeof helpRequestStatusValues)[number];
+type NominationStatus = (typeof nominationStatusValues)[number];
+
 app.use(cors());
 app.use(express.json());
 
@@ -20,6 +32,10 @@ type Profile = {
   userId: string;
   displayName: string;
   isAvailable?: boolean;
+  roles?: Role[];
+  capabilities?: string[];
+  personality?: string[];
+  trustScore?: number;
   bio?: string;
   city?: string;
   countryCode?: string;
@@ -34,8 +50,29 @@ type MatchResult = {
   userId: string;
   displayName: string;
   city?: string;
+  roles?: Role[];
+  capabilities?: string[];
+  trustScore?: number;
   score: number;
   reasons: string[];
+};
+
+type HelpRequest = {
+  id: string;
+  userId: string;
+  intent: HelpIntent;
+  description?: string;
+  urgency?: Urgency;
+  status: HelpRequestStatus;
+  createdAt: string;
+};
+
+type OperatorNomination = {
+  id: string;
+  requestId: string;
+  operatorId: string;
+  status: NominationStatus;
+  createdAt: string;
 };
 
 type MatchCategory = {
@@ -46,6 +83,8 @@ type MatchCategory = {
 
 const users: User[] = [];
 const profiles: Profile[] = [];
+const helpRequests: HelpRequest[] = [];
+const operatorNominations: OperatorNomination[] = [];
 
 const seedProfiles = [
   {
@@ -144,12 +183,42 @@ function getStringArray(value: unknown) {
     .filter(Boolean);
 }
 
+function getRoleArray(value: unknown) {
+  const values = getStringArray(value);
+
+  if (values === null) {
+    return null;
+  }
+
+  if (!values) {
+    return undefined;
+  }
+
+  return values.every((item): item is Role => roleValues.includes(item as Role))
+    ? values
+    : null;
+}
+
 function getBoolean(value: unknown) {
   if (value === undefined) {
     return undefined;
   }
 
   return typeof value === "boolean" ? value : null;
+}
+
+function getNumber(value: unknown) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getEnumValue<T extends readonly string[]>(value: unknown, allowedValues: T) {
+  return typeof value === "string" && allowedValues.includes(value)
+    ? (value as T[number])
+    : null;
 }
 
 function getOverlapCount(valuesA?: string[], valuesB?: string[]) {
@@ -213,6 +282,92 @@ function getMatchReasons(currentProfile: Profile, candidateProfile: Profile) {
     .map(({ label }) => label);
 }
 
+function getRoleBoostRoles(intent: HelpIntent): Role[] {
+  switch (intent) {
+    case "food":
+      return ["local", "guide"];
+    case "navigation":
+      return ["guide", "local"];
+    case "translation":
+      return ["expert", "guide"];
+    case "explore":
+      return ["companion", "local", "guide"];
+    case "emergency":
+      return ["expert", "local"];
+  }
+}
+
+function getRequestMatchResult(helpRequest: HelpRequest, candidateProfile: Profile): MatchResult {
+  let score = 1;
+  const reasons = ["Available now"];
+  const trustScore = candidateProfile.trustScore ?? 0;
+  const matchingRoles = (candidateProfile.roles ?? []).filter((role) =>
+    getRoleBoostRoles(helpRequest.intent).includes(role)
+  );
+
+  if ((candidateProfile.capabilities ?? []).includes(helpRequest.intent)) {
+    score += 5;
+    reasons.push(`Matches your ${helpRequest.intent} request`);
+  }
+
+  if (matchingRoles.length > 0) {
+    score += 2;
+    reasons.push(`Good fit for ${helpRequest.intent} help`);
+  }
+
+  if (trustScore > 0) {
+    score += trustScore;
+  }
+
+  if (trustScore >= 4) {
+    reasons.push("High local trust");
+  }
+
+  return {
+    userId: candidateProfile.userId,
+    displayName: candidateProfile.displayName,
+    ...(candidateProfile.city ? { city: candidateProfile.city } : {}),
+    ...(candidateProfile.roles ? { roles: candidateProfile.roles } : {}),
+    ...(candidateProfile.capabilities ? { capabilities: candidateProfile.capabilities } : {}),
+    ...(candidateProfile.trustScore !== undefined ? { trustScore: candidateProfile.trustScore } : {}),
+    score: Number(score.toFixed(1)),
+    reasons,
+  };
+}
+
+function getRequestById(requestId: string) {
+  return helpRequests.find((request) => request.id === requestId);
+}
+
+function getNominationsByRequestId(requestId: string) {
+  return operatorNominations.filter((nomination) => nomination.requestId === requestId);
+}
+
+function getRequestState(request: HelpRequest) {
+  const nominations = getNominationsByRequestId(request.id);
+  const getOperatorsByNominationStatus = (status: NominationStatus) =>
+    nominations
+      .filter((nomination) => nomination.status === status)
+      .map((nomination) => {
+        const profile = profiles.find((candidate) => candidate.userId === nomination.operatorId);
+
+        if (!profile) {
+          return null;
+        }
+
+        return getRequestMatchResult(request, profile);
+      })
+      .filter((match): match is MatchResult => match !== null)
+      .sort((a, b) => b.score - a.score);
+
+  return {
+    request,
+    nominations,
+    acceptedOperators: getOperatorsByNominationStatus("accepted"),
+    pendingOperators: getOperatorsByNominationStatus("pending"),
+  };
+}
+
 function seedMockProfiles() {
   users.length = 0;
   profiles.length = 0;
@@ -274,6 +429,10 @@ app.post("/profiles", (req, res) => {
     userId: rawUserId,
     displayName: rawDisplayName,
     isAvailable: rawIsAvailable,
+    roles: rawRoles,
+    capabilities: rawCapabilities,
+    personality: rawPersonality,
+    trustScore: rawTrustScore,
     bio,
     city,
     countryCode,
@@ -287,6 +446,10 @@ app.post("/profiles", (req, res) => {
   const userId = getTrimmedString(rawUserId);
   const displayName = getTrimmedString(rawDisplayName);
   const isAvailable = getBoolean(rawIsAvailable);
+  const roles = getRoleArray(rawRoles);
+  const capabilities = getStringArray(rawCapabilities);
+  const personality = getStringArray(rawPersonality);
+  const trustScore = getNumber(rawTrustScore);
   const languages = getStringArray(rawLanguages);
   const interests = getStringArray(rawInterests);
   const trimmedBio = getTrimmedString(bio);
@@ -306,6 +469,22 @@ app.post("/profiles", (req, res) => {
 
   if (isAvailable === null) {
     return res.status(400).json({ error: "isAvailable must be a boolean" });
+  }
+
+  if (roles === null) {
+    return res.status(400).json({ error: "roles must be an array of valid role values" });
+  }
+
+  if (capabilities === null) {
+    return res.status(400).json({ error: "capabilities must be an array" });
+  }
+
+  if (personality === null) {
+    return res.status(400).json({ error: "personality must be an array" });
+  }
+
+  if (trustScore === null) {
+    return res.status(400).json({ error: "trustScore must be a number" });
   }
 
   if (languages === null) {
@@ -333,6 +512,10 @@ app.post("/profiles", (req, res) => {
     userId,
     displayName,
     ...(isAvailable !== undefined ? { isAvailable } : {}),
+    ...(roles ? { roles } : {}),
+    ...(capabilities ? { capabilities } : {}),
+    ...(personality ? { personality } : {}),
+    ...(trustScore !== undefined ? { trustScore } : {}),
     ...(trimmedBio ? { bio: trimmedBio } : {}),
     ...(trimmedCity ? { city: trimmedCity } : {}),
     ...(trimmedCountryCode ? { countryCode: trimmedCountryCode } : {}),
@@ -359,6 +542,137 @@ app.get("/profiles/:userId", (req, res) => {
 
 app.post("/seed/mock", (_req, res) => {
   res.json(seedMockProfiles());
+});
+
+app.post("/requests/match", (req, res) => {
+  const userId = getTrimmedString(req.body?.userId);
+  const intent = getEnumValue(req.body?.intent, helpIntentValues);
+  const description = getTrimmedString(req.body?.description);
+  const urgencyRaw = req.body?.urgency;
+  const urgency =
+    urgencyRaw === undefined ? undefined : getEnumValue(urgencyRaw, urgencyValues);
+
+  if (!userId) {
+    return res.status(400).json({ error: "userId is required" });
+  }
+
+  if (!intent) {
+    return res.status(400).json({ error: "intent is required" });
+  }
+
+  if (urgencyRaw !== undefined && !urgency) {
+    return res.status(400).json({ error: "urgency must be low, medium, or high" });
+  }
+
+  const currentProfile = profiles.find((profile) => profile.userId === userId);
+
+  if (!currentProfile) {
+    return res.status(404).json({ error: "Profile not found" });
+  }
+
+  const helpRequest: HelpRequest = {
+    id: crypto.randomUUID(),
+    userId,
+    intent,
+    ...(description ? { description } : {}),
+    ...(urgency ? { urgency } : {}),
+    status: "open",
+    createdAt: new Date().toISOString(),
+  };
+
+  helpRequests.push(helpRequest);
+
+  const matches = profiles
+    .filter(
+      (profile) =>
+        profile.userId !== currentProfile.userId && profile.isAvailable !== false
+    )
+    .map((profile) => getRequestMatchResult(helpRequest, profile))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  const nominations = matches.slice(0, 3).map((match) => {
+    const nomination: OperatorNomination = {
+      id: crypto.randomUUID(),
+      requestId: helpRequest.id,
+      operatorId: match.userId,
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+
+    operatorNominations.push(nomination);
+    return nomination;
+  });
+
+  if (nominations.length > 0) {
+    helpRequest.status = "nominated";
+  }
+
+  res.json({
+    request: helpRequest,
+    nominations,
+    matches: matches.slice(0, 3),
+  });
+});
+
+app.post("/requests/:requestId/respond", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+  const operatorId = getTrimmedString(req.body?.operatorId);
+  const action = getEnumValue(req.body?.action, ["accept", "decline"] as const);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  if (!operatorId) {
+    return res.status(400).json({ error: "operatorId is required" });
+  }
+
+  if (!action) {
+    return res.status(400).json({ error: "action must be accept or decline" });
+  }
+
+  const nomination = operatorNominations.find(
+    (item) => item.requestId === request.id && item.operatorId === operatorId
+  );
+
+  if (!nomination) {
+    return res.status(404).json({ error: "Nomination not found" });
+  }
+
+  nomination.status = action === "accept" ? "accepted" : "declined";
+
+  if (action === "accept") {
+    request.status = "accepted";
+  }
+
+  res.json(getRequestState(request));
+});
+
+app.post("/requests/:requestId/status", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+  const status = getEnumValue(req.body?.status, helpRequestStatusValues);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  if (!status) {
+    return res.status(400).json({ error: "status is invalid" });
+  }
+
+  request.status = status;
+  res.json(getRequestState(request));
+});
+
+app.get("/requests/:requestId", (req, res) => {
+  const request = getRequestById(req.params.requestId);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  res.json(getRequestState(request));
 });
 
 app.get("/match/:userId", (req, res) => {

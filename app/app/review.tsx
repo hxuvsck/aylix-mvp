@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Button, ScrollView, Text, TextInput, View } from "react-native";
+import { updateRequestStatus } from "../lib/api";
 import { saveLatestReview, updateUserTrust } from "../lib/storage";
 
 function getSingleParam(value?: string | string[]) {
@@ -19,6 +20,7 @@ function safeParseArray(value?: string) {
 
 export default function ReviewScreen() {
     const params = useLocalSearchParams<{
+        requestId?: string | string[];
         userId?: string | string[];
         displayName?: string | string[];
         city?: string | string[];
@@ -26,6 +28,7 @@ export default function ReviewScreen() {
         reasons?: string | string[];
     }>();
 
+    const requestId = getSingleParam(params.requestId);
     const userId = getSingleParam(params.userId);
     const displayName = getSingleParam(params.displayName);
     const city = getSingleParam(params.city);
@@ -50,6 +53,9 @@ export default function ReviewScreen() {
             submittedAt: new Date().toISOString(),
         });
         await updateUserTrust(userId, rating);
+        if (requestId) {
+            await updateRequestStatus(requestId, "completed");
+        }
 
         router.replace("/profile");
     };

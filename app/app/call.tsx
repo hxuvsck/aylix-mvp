@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, ScrollView, Text, View } from "react-native";
+import { updateRequestStatus } from "../lib/api";
 
 function safeParseArray(value?: string) {
     if (!value) return [];
@@ -18,6 +19,7 @@ function getSingleParam(value?: string | string[]) {
 
 export default function CallScreen() {
     const params = useLocalSearchParams<{
+        requestId?: string | string[];
         userId?: string | string[];
         displayName?: string | string[];
         city?: string | string[];
@@ -25,6 +27,7 @@ export default function CallScreen() {
         reasons?: string | string[];
     }>();
 
+    const requestId = getSingleParam(params.requestId);
     const userId = getSingleParam(params.userId);
     const displayName = getSingleParam(params.displayName);
     const city = getSingleParam(params.city);
@@ -37,6 +40,7 @@ export default function CallScreen() {
         router.push({
             pathname: "/review",
             params: {
+                requestId: requestId ?? "",
                 userId,
                 displayName,
                 city: city ?? "",
@@ -59,6 +63,14 @@ export default function CallScreen() {
             clearTimeout(connectTimeout);
         };
     }, [userId, displayName]);
+
+    useEffect(() => {
+        if (!requestId) {
+            return;
+        }
+
+        void updateRequestStatus(requestId, "in_call");
+    }, [requestId]);
 
     useEffect(() => {
         if (callState !== "connected") {
