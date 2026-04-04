@@ -69,6 +69,18 @@ const helpTopicOptions = [
     "Business Assistance",
 ] as const;
 
+const cityOptions = [
+    "Ulaanbaatar",
+    "Seoul",
+    "Tokyo",
+    "Osaka",
+    "Bangkok",
+    "Paris",
+    "Berlin",
+    "New York",
+    "Bali",
+] as const;
+
 export default function OnboardingScreen() {
     const [name, setName] = useState("");
     const [city, setCity] = useState("");
@@ -140,6 +152,42 @@ export default function OnboardingScreen() {
             <Text style={{ color: "#444" }}>
                 Selected: {selected.length > 0 ? selected.join(", ") : "None"}
             </Text>
+        </View>
+    );
+
+    const renderSingleSelectGroup = (
+        label: string,
+        options: readonly string[],
+        selected: string,
+        setSelected: (next: string) => void
+    ) => (
+        <View style={{ marginBottom: 14 }}>
+            <Text style={{ marginBottom: 8 }}>{label}</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                {options.map((option) => {
+                    const isSelected = selected === option;
+
+                    return (
+                        <Pressable
+                            key={option}
+                            onPress={() => setSelected(option)}
+                            style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 8,
+                                borderWidth: 1,
+                                borderColor: isSelected ? "#0a7ea4" : "#bbb",
+                                backgroundColor: isSelected ? "#e7f6fb" : "#fff",
+                                borderRadius: 999,
+                                marginRight: 8,
+                                marginBottom: 8,
+                            }}
+                        >
+                            <Text style={{ color: isSelected ? "#0a7ea4" : "#222" }}>{option}</Text>
+                        </Pressable>
+                    );
+                })}
+            </View>
+            <Text style={{ color: "#444" }}>Selected: {selected || "None"}</Text>
         </View>
     );
 
@@ -226,12 +274,7 @@ export default function OnboardingScreen() {
                     style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
                 />
 
-                <TextInput
-                    placeholder="City"
-                    value={city}
-                    onChangeText={setCity}
-                    style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
-                />
+                {renderSingleSelectGroup("City", cityOptions, city, setCity)}
 
                 <Text style={{ marginBottom: 8 }}>
                     Availability: {isAvailable ? "Available to help" : "Not available"}

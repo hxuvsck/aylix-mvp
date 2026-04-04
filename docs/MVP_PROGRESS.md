@@ -55,46 +55,53 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 7. The app routes to the profile screen.
 8. The user can see whether their profile is currently available to help.
 9. The user starts a help request from the profile screen by answering `What do you need?`
-10. The API ranks available operators by intent fit, role relevance, trust, and availability.
-11. The top operators are nominated to the request and the request enters a live response flow.
-12. Operators can view nominated requests in an inbox and accept or decline them.
-13. The traveler request screen polls for request state and shows accepted, declined, pending, and selected operators.
-14. Once an operator accepts, the traveler can reserve that exact operator with an estimated session price.
-15. Reservation locks the request to one selected operator and finishes the marketplace-selection step.
-16. Traveler and selected operator can both move into a shared reserved-session handoff screen.
-17. Starting the session from the handoff screen moves the request into `in_call`.
-18. Traveler and selected operator can both see a shared active-session placeholder with the current request snapshot.
-19. The active session can be completed explicitly from the shared session screen.
-20. Completing the session moves the request to `completed` and payment state to `paid`.
-21. The user can then enter the review screen and submit a lightweight review.
-22. Review submission is saved against the completed request and updates local trust for the reviewed user.
-23. Traveler and operator can both view completed session history from their side of the app.
-24. Operators can view a lightweight earnings snapshot derived from completed paid sessions.
-25. The user returns to the profile screen and can see review memory still reflected in the app.
-26. On later launches, the app goes straight to the profile screen if saved profile data exists.
-27. The user can reset the saved profile and return to onboarding.
+10. In the current QA baseline, the API returns all operators whose `isAvailable` value is not `false`.
+11. The request flow no longer blocks a traveler who already has another active request.
+12. All available operators are nominated in QA mode so the traveler can always see candidates.
+13. QA-mode nominations are auto-accepted so the traveler can select an operator immediately.
+14. The traveler request screen polls for request state and shows selected, accepted, declined, and pending operators.
+15. The traveler can reserve a visible operator with an estimated session price.
+16. Reservation locks the request to one selected operator and finishes the marketplace-selection step.
+17. Traveler and selected operator can both move into a shared reserved-session handoff screen.
+18. Starting the session from the handoff screen moves the request into `in_call`.
+19. Traveler and selected operator can both see a shared active-session placeholder with the current request snapshot.
+20. The active session can be completed explicitly from the shared session screen.
+21. Completing the session moves the request to `completed` and payment state to `paid`.
+22. The user can then enter the review screen and submit a lightweight review.
+23. Review submission is saved against the completed request and updates local trust for the reviewed user.
+24. Traveler and operator can both view completed session history from their side of the app.
+25. Operators can view a lightweight earnings snapshot derived from completed paid sessions.
+26. The user returns to the profile screen and can see review memory still reflected in the app.
+27. On later launches, the app goes straight to the profile screen if saved profile data exists.
+28. The user can reset the saved profile and return to onboarding.
 
 ## What Currently Works
 
 - Expo app runs with router-based navigation
 - Onboarding screen creates a user and profile through the API
-- Onboarding supports display name, city, languages, interests, vibe tags, travel style, and help topics
+- Onboarding supports display name, city, languages, interests, vibe tags, travel style, and help topics through predefined selections
 - Onboarding lets new profiles default to available and optionally mark themselves not available
 - Onboarding now supports roles, capabilities, and personality traits for operator matching
+- Onboarding city is now constrained to the current mock operator city list for exact-value consistency
 - Profile screen loads route params safely, falls back to AsyncStorage, and avoids the earlier render loop issue
 - Profile screen shows whether the current profile is available to help
 - Profile screen now acts as the entry point into request-based matching
 - Request screen lets users choose an intent, optional description, and urgency
-- Matching now ranks operators by intent fit, role relevance, trust score, and availability while keeping older profiles backward compatible
-- Request creation now produces nominations for the top 3 ranked operators
+- Request screen now includes a `DEBUG: Fetch Operators` action for QA
+- QA-mode request matching now returns every operator with `isAvailable !== false`
+- Request creation in QA mode no longer blocks travelers who already have another active request
+- Request creation in QA mode now produces nominations for all available operators
 - Operator inbox now shows active nominated traveler requests for the saved local operator profile
 - Operator request detail now supports accept and decline responses through the existing nomination flow
 - Request screen polls live request state and separates selected, accepted, declined, and pending operators
+- QA-mode nominations are auto-accepted so travelers can select an operator without waiting on a second response loop
 - Request screen supports pre-session cancellation and terminal-state messaging
 - Request screen now shows an estimated session price and a lightweight reservation step before call start
 - Accepted operators can be reserved through a payment placeholder flow before the session begins
 - Traveler request view now supports explicit operator selection before the session starts
 - Operator cards display roles, capabilities, trust, and human-readable reasons
+- Backend logs now print total operators, available operators, and returned matches during QA matching
+- Request screen now shows `No operators found (QA mode)` instead of a blank operator area if the array is empty
 - Session start now requires a reserved selected operator and locks the request to that operator
 - Traveler and selected operator now share a lightweight reserved-session handoff screen before call
 - Shared session screen now supports reserved, in-progress, and completed states
@@ -118,7 +125,8 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Express API exposes health, user creation, profile creation, profile fetch, and match endpoints
 - Backend uses safer UUID-based IDs instead of timestamp IDs
 - Profile creation now validates array-based profile fields consistently and returns `400` for malformed input
-- Matching returns the top 5 rule-based results, excludes zero-score matches, and includes reasons based on shared profile categories
+- A dedicated mock operator dataset now lives in `api/src/mock-operators.ts`
+- QA mode currently bypasses normal request-time filtering and ranking to force a stable baseline
 
 ## Known Limitations
 
@@ -126,7 +134,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - No database
 - No persistent backend storage
 - Backend data resets on server restart
-- Matching is still rule-based with simple scoring weights
+- QA mode currently bypasses request-time ranking and most request-time filtering to keep operator results non-empty during testing
 - Trust is frontend-only and stored locally on-device
 - Trust uses a simple averaging formula with defaults instead of a richer reputation model
 - Availability is a simple profile flag and not a real-time presence system
@@ -136,6 +144,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Pricing is fixed by intent and does not yet support operator-specific rates
 - Payment status is a structural placeholder and does not process or move real money
 - Operator identity still depends on the saved local profile because there is no auth layer
+- Travelers can currently create multiple active requests in QA mode because duplicate-active-request blocking is temporarily disabled
 - Reserved-session handoff is a lightweight state transition and not yet a true pre-call coordination layer
 - Active session state is still a placeholder layer and not a real live-call transport
 - Reviews are single-submit only and do not support editing, deletion, or moderation
@@ -157,7 +166,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - A small API layer keeps frontend networking easier to change
 - Local persistence adds meaningful product feel early without backend complexity
 - Minimal validation is still worth doing, even in an MVP, especially when profile data becomes more structured
-- The shift from static matching into request state creates a more credible coordination loop without requiring heavy infrastructure
+- A forced QA baseline is sometimes more valuable than elegant matching when the team needs one end-to-end flow to stop breaking
 - Adding a reservation step creates a useful commitment layer before real payment rails exist
 - Adding operator inbox and explicit traveler selection makes the two-sided flow easier to understand without needing a full marketplace backend
 - A shared session placeholder makes the active state clearer without forcing a premature realtime architecture
@@ -177,12 +186,12 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding, profile memory, local readiness, intent-based role matching, operator response handling, traveler selection, reservation, session handoff, active session placeholder state, session locking, review submission, completed session history, operator earnings snapshots, local trust, simulated call states, and the review loop are working in stable MVP form. The app now has a credible two-sided request-to-session backbone with an economic placeholder layer and lightweight post-session visibility for both travelers and operators.
+Core onboarding, profile memory, local readiness, forced QA-mode operator visibility, traveler selection, reservation, session handoff, active session placeholder state, session locking, review submission, completed session history, operator earnings snapshots, local trust, simulated call states, and the review loop are working in a stabilized MVP QA baseline. The app now has a forced working request-to-session backbone for manual testing, with the matching layer temporarily simplified so operators reliably appear.
 
 ## Next Steps
 
-- Refine rule-based matching quality within the current deterministic system
-- Continue tightening request lifecycle, operator response handling, reservation, session handoff, active session state, session locking, trust, review, history, and earnings behavior for reliability
+- Restore or refine non-QA matching only after the current forced baseline is consistently reliable
+- Continue tightening request lifecycle, reservation, session handoff, active session state, session locking, trust, review, history, and earnings behavior for reliability
 - Improve profile and match presentation without changing the core flow
 - Hold the architecture simple until the current loop feels consistently stable
 

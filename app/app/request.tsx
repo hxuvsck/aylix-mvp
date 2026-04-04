@@ -391,6 +391,14 @@ export default function RequestScreen() {
                     disabled={isMatching || isActionPending}
                 />
 
+                <View style={{ marginTop: 8 }}>
+                    <Button
+                        title={isMatching ? "DEBUG: Fetching Operators..." : "DEBUG: Fetch Operators"}
+                        onPress={handleFindOperators}
+                        disabled={isMatching || isActionPending}
+                    />
+                </View>
+
                 {isMatching ? (
                     <Text style={{ marginTop: 12, color: "#444" }}>Ranking available operators...</Text>
                 ) : null}
@@ -531,7 +539,16 @@ export default function RequestScreen() {
                 ) : null}
 
                 <Text style={{ fontSize: 20, marginTop: 12, marginBottom: 12 }}>Available operators to choose</Text>
-                {!responsesError && !isLoadingResponses && acceptedOperators.length === 0 ? (
+                {!responsesError &&
+                !isLoadingResponses &&
+                acceptedOperators.length === 0 &&
+                pendingOperators.length === 0 &&
+                declinedOperators.length === 0 ? (
+                    <Text style={{ marginBottom: 16, color: "#444" }}>
+                        No operators found (QA mode)
+                    </Text>
+                ) : null}
+                {!responsesError && !isLoadingResponses && acceptedOperators.length === 0 && pendingOperators.length > 0 ? (
                     <Text style={{ marginBottom: 16, color: "#444" }}>
                         No accepted operators yet.
                     </Text>

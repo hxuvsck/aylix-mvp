@@ -506,21 +506,35 @@ function getRequestMatchResult(helpRequest: HelpRequest, candidateProfile: Profi
   };
 }
 
-function getQaModeOperatorResults(excludedOperatorIds: string[] = []): MatchResult[] {
-  const excludedIds = new Set(excludedOperatorIds);
-
-  return profiles
-    .filter((profile) => !excludedIds.has(profile.userId) && profile.isAvailable === true)
-    .map((profile) => ({
+function getQaModeOperatorResults(
+  requiredExcludedOperatorIds: string[] = [],
+  softExcludedOperatorIds: string[] = []
+): MatchResult[] {
+  const requiredExcludedIds = new Set(requiredExcludedOperatorIds);
+  const softExcludedIds = new Set(softExcludedOperatorIds);
+  const totalOperators = profiles.filter((profile) => !requiredExcludedIds.has(profile.userId));
+  const allAvailableOperators = totalOperators.filter((profile) => profile.isAvailable !== false);
+  const preferredAvailableOperators = allAvailableOperators.filter(
+    (profile) => !softExcludedIds.has(profile.userId)
+  );
+  const operatorsToReturn =
+    preferredAvailableOperators.length > 0 ? preferredAvailableOperators : allAvailableOperators;
+  const returnedMatches = operatorsToReturn.map((profile) => ({
       userId: profile.userId,
       displayName: profile.displayName,
-      ...(profile.city ? { city: profile.city } : {}),
-      ...(profile.roles ? { roles: profile.roles } : {}),
-      ...(profile.capabilities ? { capabilities: profile.capabilities } : {}),
-      ...(profile.trustScore !== undefined ? { trustScore: profile.trustScore } : {}),
-      score: 1,
-      reasons: ["Available now", "QA mode: all available operators returned"],
-    }));
+    ...(profile.city ? { city: profile.city } : {}),
+    ...(profile.roles ? { roles: profile.roles } : {}),
+    ...(profile.capabilities ? { capabilities: profile.capabilities } : {}),
+    ...(profile.trustScore !== undefined ? { trustScore: profile.trustScore } : {}),
+    score: 1,
+    reasons: ["Available now", "QA mode: all available operators returned"],
+  }));
+
+  console.log("TOTAL:", totalOperators.length);
+  console.log("AVAILABLE:", allAvailableOperators.length);
+  console.log("RETURNED:", returnedMatches.length);
+
+  return returnedMatches;
 }
 
 function getQuotedAmountForIntent(intent: HelpIntent) {
@@ -587,7 +601,7 @@ function getRankedOperatorsForRequest(
   excludedOperatorIds: string[] = []
 ) {
   if (QA_MODE) {
-    return getQaModeOperatorResults([request.userId, ...excludedOperatorIds]);
+    return getQaModeOperatorResults([request.userId], excludedOperatorIds);
   }
 
   const excludedIds = new Set([request.userId, ...excludedOperatorIds]);
@@ -606,8 +620,9 @@ function createNominationsForRequest(request: HelpRequest, matches: MatchResult[
       id: crypto.randomUUID(),
       requestId: request.id,
       operatorId: match.userId,
-      status: "pending",
+      status: QA_MODE ? "accepted" : "pending",
       createdAt: new Date().toISOString(),
+      ...(QA_MODE ? { respondedAt: new Date().toISOString() } : {}),
     };
 
     operatorNominations.push(nomination);
@@ -1474,17 +1489,6 @@ app.post("/requests/match", (req, res) => {
     return res.status(404).json({ error: "Profile not found" });
   }
 
-  const existingActiveRequest = helpRequests.find(
-    (request) => request.userId === userId && !isTerminalRequestStatus(request.status)
-  );
-
-  if (existingActiveRequest) {
-    return res.status(409).json({
-      error: "This traveler already has an active request",
-      request: existingActiveRequest,
-    });
-  }
-
   const helpRequest = createHelpRequest({
     userId,
     intent,
@@ -1492,14 +1496,14 @@ app.post("/requests/match", (req, res) => {
     ...(urgency ? { urgency } : {}),
   });
 
-  const matches = getRankedOperatorsForRequest(helpRequest).slice(0, 5);
-  const nominations = createNominationsForRequest(helpRequest, matches, 3);
+  const matches = getRankedOperatorsForRequest(helpRequest);
+  const nominations = createNominationsForRequest(helpRequest, matches, matches.length);
 
   res.json({
     request: helpRequest,
     nominations,
-    operators: matches.slice(0, 3),
-    matches: matches.slice(0, 3),
+    operators: matches,
+    matches,
   });
 });
 
@@ -1530,7 +1534,7 @@ app.post("/requests/:requestId/expand", (req, res) => {
     (nomination) => nomination.operatorId
   );
   const operators = getRankedOperatorsForRequest(request, existingOperatorIds);
-  const newNominations = createNominationsForRequest(request, operators, 3);
+  const newNominations = createNominationsForRequest(request, operators, operators.length);
 
   request.retryCount += 1;
   request.status = "nominated";
@@ -1541,7 +1545,7 @@ app.post("/requests/:requestId/expand", (req, res) => {
   res.json({
     request,
     nominations: getNominationsByRequestId(request.id),
-    operators: operators.slice(0, 3),
+    operators,
   });
 });
 
@@ -1562,10 +1566,6 @@ app.post("/requests/:requestId/retry", (req, res) => {
     return res.status(400).json({ error: "Request traveler is invalid" });
   }
 
-  if (hasActiveRequest(existingRequest.userId)) {
-    return res.status(409).json({ error: "This traveler already has an active request" });
-  }
-
   const newRequest = createHelpRequest({
     userId: existingRequest.userId,
     intent: existingRequest.intent,
@@ -1573,14 +1573,14 @@ app.post("/requests/:requestId/retry", (req, res) => {
     ...(existingRequest.urgency ? { urgency: existingRequest.urgency } : {}),
   });
 
-  const matches = getRankedOperatorsForRequest(newRequest).slice(0, 5);
-  const nominations = createNominationsForRequest(newRequest, matches, 3);
+  const matches = getRankedOperatorsForRequest(newRequest);
+  const nominations = createNominationsForRequest(newRequest, matches, matches.length);
 
   res.json({
     request: newRequest,
     nominations,
-    operators: matches.slice(0, 3),
-    matches: matches.slice(0, 3),
+    operators: matches,
+    matches,
   });
 });
 
