@@ -146,7 +146,7 @@ export default function OperatorInboxScreen() {
                 </View>
             ))}
 
-            <Button title="Back to profile" onPress={() => router.replace("/profile")} />
+            <Button title="Back to Operator Home" onPress={() => router.replace("/operator/home")} />
         </ScrollView>
     );
 }

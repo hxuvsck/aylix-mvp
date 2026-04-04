@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const PROFILE_STORAGE_KEY = "aylix_profile";
 const LATEST_REVIEW_STORAGE_KEY = "aylix_latest_review";
 const TRUST_STORAGE_KEY = "aylix_trust";
+const SELECTED_ROLE_STORAGE_KEY = "aylix_selected_role";
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -24,6 +25,8 @@ export type UserTrust = {
   trustScore: number;
   reviewCount: number;
 };
+
+export type SelectedAppRole = "traveler" | "operator";
 
 function getTrimmedString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -178,6 +181,19 @@ export async function getSavedProfile() {
 
 export async function clearSavedProfile() {
   await AsyncStorage.removeItem(PROFILE_STORAGE_KEY);
+}
+
+export async function saveSelectedRole(role: SelectedAppRole) {
+  await AsyncStorage.setItem(SELECTED_ROLE_STORAGE_KEY, role);
+}
+
+export async function getSelectedRole() {
+  const raw = await AsyncStorage.getItem(SELECTED_ROLE_STORAGE_KEY);
+  return raw === "traveler" || raw === "operator" ? raw : null;
+}
+
+export async function clearSelectedRole() {
+  await AsyncStorage.removeItem(SELECTED_ROLE_STORAGE_KEY);
 }
 
 export async function saveLatestReview(review: LatestReview) {

@@ -631,7 +631,7 @@ export default function RequestScreen() {
                 ))}
 
                 <View style={{ marginTop: 20 }}>
-                    <Button title="Back to profile" onPress={() => router.replace("/profile")} />
+                    <Button title="Back to Traveler Home" onPress={() => router.replace("/traveler/home")} />
                 </View>
             </View>
         </ScrollView>

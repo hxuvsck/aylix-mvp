@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Button, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { capabilitiesOptions, createProfile, createUser, personalityOptions, roleOptions } from "../lib/api";
-import { saveProfile } from "../lib/storage";
+import { getSelectedRole, saveProfile } from "../lib/storage";
 
 const languageOptions = [
     "English",
@@ -226,6 +226,18 @@ export default function OnboardingScreen() {
 
             await saveProfile(profile);
             setResult("Profile created");
+
+            const selectedRole = await getSelectedRole();
+
+            if (selectedRole === "operator") {
+                router.push("/operator/home");
+                return;
+            }
+
+            if (selectedRole === "traveler") {
+                router.push("/traveler/home");
+                return;
+            }
 
             router.push({
                 pathname: "/profile",
