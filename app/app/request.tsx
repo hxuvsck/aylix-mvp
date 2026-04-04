@@ -356,7 +356,7 @@ export default function RequestScreen() {
     if (isLoadingProfile) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
-                <Text>Loading request flow...</Text>
+                <Text>Loading Find Operator...</Text>
             </View>
         );
     }
@@ -379,9 +379,9 @@ export default function RequestScreen() {
             keyboardShouldPersistTaps="handled"
         >
             <View>
-                <Text style={{ fontSize: 28, marginBottom: 8 }}>What do you need?</Text>
+                <Text style={{ fontSize: 28, marginBottom: 8 }}>Find Operator</Text>
                 <Text style={{ fontSize: 16, marginBottom: 20, color: "#444" }}>
-                    Choose the kind of help you need and we will rank available operators.
+                    Describe the help you need and choose from available operators.
                 </Text>
 
                 <Text style={{ marginBottom: 8 }}>Intent</Text>
@@ -430,7 +430,7 @@ export default function RequestScreen() {
                 </View>
 
                 {isMatching ? (
-                    <Text style={{ marginTop: 12, color: "#444" }}>Ranking available operators...</Text>
+                    <Text style={{ marginTop: 12, color: "#444" }}>Looking for available operators...</Text>
                 ) : null}
 
                 {activeRequest ? (
@@ -523,12 +523,12 @@ export default function RequestScreen() {
                             </Text>
                             {!isTerminal && activeRequest?.paymentStatus === "reserved" && activeRequest.status !== "in_call" ? (
                                 <View style={{ marginBottom: 8 }}>
-                                    <Button title="Continue to session" onPress={handleContinueToSession} />
+                                    <Button title="Open Session" onPress={handleContinueToSession} />
                                 </View>
                             ) : null}
                             {!isTerminal && activeRequest?.status === "in_call" ? (
                                 <View style={{ marginBottom: 8 }}>
-                                    <Button title="Continue session" onPress={handleOpenCall} />
+                                    <Button title="Open Session" onPress={handleOpenCall} />
                                 </View>
                             ) : null}
                             {activeRequest?.status === "in_call" ? (
@@ -550,20 +550,20 @@ export default function RequestScreen() {
                         <Text style={{ marginBottom: 8 }}>ERROR: {responsesError}</Text>
                         {activeRequest?.id ? (
                             <Button
-                                title="Retry responses"
+                                title="Refresh Request"
                                 onPress={() => void loadRequestView(activeRequest.id, profile.userId)}
                             />
                         ) : null}
                     </View>
                 ) : null}
                 {isLoadingResponses ? (
-                    <Text style={{ marginBottom: 12, color: "#444" }}>Loading operator responses...</Text>
+                    <Text style={{ marginBottom: 12, color: "#444" }}>Loading request updates...</Text>
                 ) : null}
                 {!responsesError && !isLoadingResponses && hasRequested && !hasAnyResponses ? (
                     <View style={{ marginBottom: 20 }}>
-                        <Text style={{ fontSize: 18, marginBottom: 8 }}>No operator responses yet</Text>
+                        <Text style={{ fontSize: 18, marginBottom: 8 }}>No operators found (QA mode)</Text>
                         <Text style={{ color: "#444" }}>
-                            Responses from nominated operators will appear here.
+                            Try Find Operator again or adjust your request details to continue the demo flow.
                         </Text>
                     </View>
                 ) : null}
@@ -575,7 +575,7 @@ export default function RequestScreen() {
                 pendingOperators.length === 0 &&
                 declinedOperators.length === 0 ? (
                     <Text style={{ marginBottom: 16, color: "#444" }}>
-                        No operators found (QA mode)
+                        No operators found (QA mode). Try Find Operator again to refresh available options.
                     </Text>
                 ) : null}
                 {!responsesError && !isLoadingResponses && acceptedOperators.length === 0 && pendingOperators.length > 0 ? (

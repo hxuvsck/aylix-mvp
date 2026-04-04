@@ -50,7 +50,7 @@ export default function TravelerRequestDetailScreen() {
     if (isLoading) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
-                <Text>Loading request details...</Text>
+                <Text>Loading Request Detail...</Text>
             </View>
         );
     }
@@ -59,7 +59,7 @@ export default function TravelerRequestDetailScreen() {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white", padding: 20 }}>
                 <Text style={{ marginBottom: 12, textAlign: "center" }}>
-                    This request is not available right now.
+                    This request is not available right now. Return to My Requests to choose another one.
                 </Text>
                 <Button title="Back to My Requests" onPress={() => router.replace("/traveler/requests")} />
             </View>
@@ -91,7 +91,7 @@ export default function TravelerRequestDetailScreen() {
         >
             <Text style={{ fontSize: 28, marginBottom: 8 }}>Request Detail</Text>
             <Text style={{ fontSize: 16, color: "#444", marginBottom: 20 }}>
-                Follow this request through its current lifecycle state.
+                Review the current request and continue with the next available step.
             </Text>
 
             <View style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 16 }}>

@@ -53,7 +53,7 @@ export default function OperatorInboxScreen() {
     if (isLoading) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
-                <Text>Loading operator inbox...</Text>
+                <Text>Loading Operator Inbox...</Text>
             </View>
         );
     }
@@ -74,9 +74,9 @@ export default function OperatorInboxScreen() {
             style={{ flex: 1, backgroundColor: "white" }}
             contentContainerStyle={{ padding: 20, flexGrow: 1 }}
         >
-            <Text style={{ fontSize: 28, marginBottom: 8 }}>Operator inbox</Text>
+            <Text style={{ fontSize: 28, marginBottom: 8 }}>Operator Inbox</Text>
             <Text style={{ fontSize: 16, marginBottom: 20, color: "#444" }}>
-                Incoming traveler requests nominated to {profile.displayName || "you"}.
+                Review incoming traveler requests and continue active work.
             </Text>
 
             <View style={{ marginBottom: 16 }}>
@@ -93,7 +93,7 @@ export default function OperatorInboxScreen() {
                 <View style={{ marginTop: 24 }}>
                     <Text style={{ fontSize: 22, marginBottom: 8 }}>No incoming requests yet</Text>
                     <Text style={{ color: "#444", marginBottom: 20 }}>
-                        Stay available and new traveler requests will appear here.
+                        Stay available and refresh the inbox when you are ready to check for new work.
                     </Text>
                 </View>
             ) : null}

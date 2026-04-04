@@ -185,7 +185,7 @@ export default function SessionScreen() {
     if (isLoading) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
-                <Text>Loading session handoff...</Text>
+                <Text>Loading Session...</Text>
             </View>
         );
     }
@@ -194,9 +194,9 @@ export default function SessionScreen() {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white", padding: 20 }}>
                 <Text style={{ marginBottom: 12, textAlign: "center" }}>
-                    No active session is available right now.
+                    No active session is available right now. Return to your current request to continue.
                 </Text>
-                <Button title="Back to profile" onPress={() => router.replace("/profile")} />
+                <Button title="Back to Home" onPress={() => router.replace("/entry")} />
             </View>
         );
     }
@@ -212,14 +212,14 @@ export default function SessionScreen() {
         stage === "active"
             ? "Session in progress"
             : stage === "completed"
-              ? "Session completed"
+              ? "Session Summary"
               : "Session ready";
     const subtitle =
         stage === "active"
             ? "This is the active session placeholder for the current request."
             : stage === "completed"
-              ? "The session is complete and ready for review."
-              : "Reserved handoff before the live call placeholder begins.";
+              ? "Review what happened in this session and continue to the next step."
+              : "This session is ready to begin when both sides are set.";
     const statusLabel =
         stage === "active" ? "In progress" : stage === "completed" ? "Completed" : "Reserved";
 
@@ -236,7 +236,7 @@ export default function SessionScreen() {
             {error ? <Text style={{ marginBottom: 16 }}>ERROR: {error}</Text> : null}
 
             <View style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 20 }}>
-                <Text style={{ marginBottom: 4 }}>{statusLabel}</Text>
+                <Text style={{ marginBottom: 4 }}>Status: {statusLabel}</Text>
                 <Text style={{ marginBottom: 4 }}>Request ID: {summary.requestId}</Text>
                 <Text style={{ marginBottom: 4 }}>Intent: {intentLabels[summary.intent]}</Text>
                 <Text style={{ marginBottom: 4 }}>Location: {summary.locationSummary}</Text>
@@ -295,7 +295,7 @@ export default function SessionScreen() {
             {stage === "reserved" ? (
                 <View style={{ marginBottom: 12 }}>
                     <Button
-                        title={isMutating ? "Starting session..." : "Start session"}
+                        title={isMutating ? "Starting Session..." : "Open Session"}
                         onPress={() => void handleStartSession()}
                         disabled={isMutating}
                     />
@@ -305,7 +305,7 @@ export default function SessionScreen() {
             {stage === "active" ? (
                 <View style={{ marginBottom: 12 }}>
                     <Button
-                        title={isMutating ? "Completing session..." : "Complete session"}
+                        title={isMutating ? "Completing Session..." : "Complete Session"}
                         onPress={() => void handleCompleteSession()}
                         disabled={isMutating}
                     />
@@ -314,7 +314,7 @@ export default function SessionScreen() {
 
             {stage === "completed" && !summary.hasReview ? (
                 <View style={{ marginBottom: 12 }}>
-                    <Button title="Leave review" onPress={handleLeaveReview} />
+                    <Button title="Leave Review" onPress={handleLeaveReview} />
                 </View>
             ) : null}
 
@@ -325,9 +325,9 @@ export default function SessionScreen() {
             ) : null}
 
             <Button
-                title="Back"
+                title={summary.viewerRole === "operator" ? "Back to Operator Home" : "Back to Traveler Home"}
                 onPress={() =>
-                    router.replace(summary.viewerRole === "operator" ? "/operator/inbox" : "/request")
+                    router.replace(summary.viewerRole === "operator" ? "/operator/home" : "/traveler/home")
                 }
             />
         </ScrollView>

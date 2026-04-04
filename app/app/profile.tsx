@@ -171,7 +171,7 @@ const handleReset = async () => {
     if (isLoadingProfile) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
-                <Text>Loading profile...</Text>
+                <Text>Loading Profile...</Text>
             </View>
         );
     }
@@ -180,9 +180,9 @@ const handleReset = async () => {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white", padding: 20 }}>
                 <Text style={{ marginBottom: 12, textAlign: "center" }}>
-                    No saved profile was found. Create a profile to continue.
+                    No saved profile was found. Return to Entry to create a profile and continue.
                 </Text>
-                <Button title="Go to onboarding" onPress={() => router.replace("/onboarding")} />
+                <Button title="Back to Entry" onPress={() => router.replace("/entry")} />
             </View>
         );
     }
@@ -193,20 +193,20 @@ const handleReset = async () => {
             contentContainerStyle={{ padding: 20, justifyContent: "center", flexGrow: 1 }}
         >
             <View>
-                <Text style={{ fontSize: 28, marginBottom: 8 }}>Your Aylix profile</Text>
+                <Text style={{ fontSize: 28, marginBottom: 8 }}>Profile</Text>
                 <Text style={{ fontSize: 16, marginBottom: 20, color: "#444" }}>
-                    This is the local profile the app will use for the current MVP matching flow.
+                    This is the local demo profile the app is using right now.
                 </Text>
 
-                <Text style={{ marginBottom: 8 }}>User ID: {profile.userId}</Text>
-                <Text style={{ marginBottom: 8 }}>Name: {profile.displayName}</Text>
+                <Text style={{ marginBottom: 8 }}>Display name: {profile.displayName}</Text>
                 <Text style={{ marginBottom: 8 }}>Role: {profile.role}</Text>
+                <Text style={{ marginBottom: 8 }}>City: {profile.city}</Text>
                 {profile.role === "operator" ? (
                     <Text style={{ marginBottom: 8 }}>
                         Availability: {profile.isAvailable === false ? "Not available" : "Available to help"}
                     </Text>
                 ) : null}
-                <Text style={{ marginBottom: 8 }}>City: {profile.city}</Text>
+                <Text style={{ marginBottom: 8 }}>User ID: {profile.userId}</Text>
                 <Text style={{ marginBottom: 8 }}>Roles: {(profile.roles ?? []).join(", ") || "None set"}</Text>
                 <Text style={{ marginBottom: 8 }}>
                     Capabilities: {(profile.capabilities ?? []).join(", ") || "None set"}
@@ -271,7 +271,7 @@ const handleReset = async () => {
                     </View>
                 ) : null}
 
-                <Button title="Reset and start over" onPress={handleReset} />
+                <Button title="Start Over" onPress={handleReset} />
             </View>
         </ScrollView>
     );

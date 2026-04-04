@@ -32,7 +32,7 @@ export default function TravelerRequestsScreen() {
     if (isLoading) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
-                <Text>Loading requests...</Text>
+                <Text>Loading My Requests...</Text>
             </View>
         );
     }
@@ -44,11 +44,13 @@ export default function TravelerRequestsScreen() {
         >
             <Text style={{ fontSize: 28, marginBottom: 8 }}>My Requests</Text>
             <Text style={{ fontSize: 16, color: "#444", marginBottom: 24 }}>
-                Review the requests created by this traveler profile.
+                Review your requests and continue any active one.
             </Text>
 
             {requests.length === 0 ? (
-                <Text style={{ color: "#444", marginBottom: 24 }}>No requests yet</Text>
+                <Text style={{ color: "#444", marginBottom: 24 }}>
+                    No requests yet. Return to Traveler Home and tap Find Operator to begin.
+                </Text>
             ) : null}
 
             {requests.map((request) => (

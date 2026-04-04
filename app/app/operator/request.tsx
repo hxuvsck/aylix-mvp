@@ -100,7 +100,7 @@ export default function OperatorRequestScreen() {
     if (isLoading) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
-                <Text>Loading request details...</Text>
+                <Text>Loading Operator Request Detail...</Text>
             </View>
         );
     }
@@ -124,9 +124,9 @@ export default function OperatorRequestScreen() {
             style={{ flex: 1, backgroundColor: "white" }}
             contentContainerStyle={{ padding: 20, flexGrow: 1 }}
         >
-            <Text style={{ fontSize: 28, marginBottom: 8 }}>Request details</Text>
+            <Text style={{ fontSize: 28, marginBottom: 8 }}>Operator Request Detail</Text>
             <Text style={{ fontSize: 16, marginBottom: 20, color: "#444" }}>
-                Review this traveler request and send your response.
+                Review this traveler request and continue the next appropriate action.
             </Text>
 
             {error ? <Text style={{ marginBottom: 16 }}>ERROR: {error}</Text> : null}
@@ -182,7 +182,7 @@ export default function OperatorRequestScreen() {
                             Payment: {sessionSummary.paymentStatus}
                         </Text>
                         <Button
-                            title={requestState.request.status === "in_call" ? "Continue to session" : "Continue to session"}
+                            title="Open Session"
                             onPress={() =>
                                 router.push({
                                     pathname: "/session",
@@ -196,13 +196,13 @@ export default function OperatorRequestScreen() {
                 <>
                     <View style={{ marginBottom: 8 }}>
                         <Button
-                            title={isResponding ? "Sending response..." : "Send response: Accept"}
+                            title={isResponding ? "Updating Request..." : "Accept Request"}
                             onPress={() => void handleRespond("accept")}
                             disabled={isResponding}
                         />
                     </View>
                     <Button
-                        title={isResponding ? "Sending response..." : "Send response: Decline"}
+                        title={isResponding ? "Updating Request..." : "Decline Request"}
                         onPress={() => void handleRespond("decline")}
                         disabled={isResponding}
                     />
@@ -216,7 +216,7 @@ export default function OperatorRequestScreen() {
             )}
 
             <View style={{ marginTop: 20 }}>
-                <Button title="Back to inbox" onPress={() => router.replace("/operator/inbox")} />
+                <Button title="Back to Inbox" onPress={() => router.replace("/operator/inbox")} />
             </View>
         </ScrollView>
     );

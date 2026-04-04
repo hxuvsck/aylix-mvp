@@ -46,7 +46,7 @@ export default function TravelerHomeScreen() {
     if (isLoading) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
-                <Text>Loading traveler home...</Text>
+                <Text>Loading Traveler Home...</Text>
             </View>
         );
     }
@@ -56,8 +56,8 @@ export default function TravelerHomeScreen() {
             <Text style={{ fontSize: 28, marginBottom: 8 }}>Traveler Home</Text>
             <Text style={{ fontSize: 16, color: "#444", marginBottom: 24 }}>
                 {profile?.displayName
-                    ? `Continue as ${profile.displayName} and explore the traveler flow.`
-                    : "Create a profile when needed, then use the traveler flow."}
+                    ? `Welcome back, ${profile.displayName}. Continue your traveler journey from here.`
+                    : "Create your traveler profile to begin requesting help."}
             </Text>
 
             {profile?.displayName ? (
@@ -109,7 +109,7 @@ export default function TravelerHomeScreen() {
                     </>
                 ) : (
                     <Text style={{ color: "#444" }}>
-                        No requests yet. Start by finding an operator.
+                        No requests yet. Tap Find Operator to start your first request.
                     </Text>
                 )}
             </View>

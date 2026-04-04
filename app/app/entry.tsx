@@ -59,9 +59,9 @@ export default function EntryScreen() {
 
     return (
         <View style={{ flex: 1, justifyContent: "center", padding: 24, backgroundColor: "white" }}>
-            <Text style={{ fontSize: 30, marginBottom: 8 }}>Welcome to Aylix</Text>
+            <Text style={{ fontSize: 30, marginBottom: 8 }}>Choose Your Demo Path</Text>
             <Text style={{ fontSize: 16, color: "#444", marginBottom: 24 }}>
-                Choose how you want to continue in the MVP flow.
+                Start as a traveler or operator and continue the current MVP flow.
             </Text>
 
             {savedProfile?.displayName ? (
@@ -72,7 +72,7 @@ export default function EntryScreen() {
                             onPress={handleContinue}
                         />
                     </View>
-                    <Button title="Start over" onPress={() => void handleStartOver()} />
+                    <Button title="Start Over" onPress={() => void handleStartOver()} />
                 </>
             ) : (
                 <>
