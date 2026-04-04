@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, ScrollView, Text, View } from "react-native";
+import { getLifecycleStatusLabel } from "../../lib/request-status";
 import { getSavedProfile, getSavedTravelerRequests } from "../../lib/storage";
 
 type SavedProfile = {
@@ -58,8 +59,17 @@ export default function TravelerRequestsScreen() {
                     <Text style={{ marginBottom: 4 }}>
                         Operator: {request.operatorDisplayName || "Not selected yet"}
                     </Text>
-                    <Text style={{ marginBottom: 4 }}>Status: {request.status}</Text>
-                    <Text>Created: {new Date(request.createdAt).toLocaleString()}</Text>
+                    <Text style={{ marginBottom: 4 }}>Status: {getLifecycleStatusLabel(request.status)}</Text>
+                    <Text style={{ marginBottom: 12 }}>Created: {new Date(request.createdAt).toLocaleString()}</Text>
+                    <Button
+                        title="View Request"
+                        onPress={() =>
+                            router.push({
+                                pathname: "/traveler/request",
+                                params: { requestId: request.requestId },
+                            })
+                        }
+                    />
                 </View>
             ))}
 

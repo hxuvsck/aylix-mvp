@@ -9,6 +9,7 @@ import {
     type ReservedSessionSummary,
     type RequestStateResponse,
 } from "../../lib/api";
+import { getLifecycleStatus, getLifecycleStatusLabel } from "../../lib/request-status";
 import { getSavedProfile } from "../../lib/storage";
 
 type SavedProfile = {
@@ -115,6 +116,9 @@ export default function OperatorRequestScreen() {
         );
     }
 
+    const lifecycleStatus = getLifecycleStatus(requestState.request.status);
+    const isActionable = ["matched", "accepted"].includes(lifecycleStatus) && !requestState.request.selectedOperatorId;
+
     return (
         <ScrollView
             style={{ flex: 1, backgroundColor: "white" }}
@@ -142,7 +146,7 @@ export default function OperatorRequestScreen() {
                     Description: {requestState.request.description || "No description added"}
                 </Text>
                 <Text style={{ marginBottom: 4 }}>
-                    Request status: {requestState.request.status}
+                    Lifecycle: {getLifecycleStatusLabel(requestState.request.status)}
                 </Text>
                 <Text style={{ marginBottom: 4 }}>
                     Payment: {requestState.request.paymentStatus}
@@ -188,7 +192,7 @@ export default function OperatorRequestScreen() {
                         />
                     </View>
                 </>
-            ) : ["nominated", "accepted"].includes(requestState.request.status) && !requestState.request.selectedOperatorId ? (
+            ) : isActionable ? (
                 <>
                     <View style={{ marginBottom: 8 }}>
                         <Button
@@ -207,7 +211,7 @@ export default function OperatorRequestScreen() {
                 <Text style={{ marginBottom: 20, color: "#444" }}>
                     {requestState.request.selectedOperatorId && !sessionSummary?.isSelectedOperator
                         ? "Another operator was selected for this request."
-                        : "This request is no longer open for operator responses."}
+                        : "This request is no longer actionable."}
                 </Text>
             )}
 

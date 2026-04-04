@@ -56,6 +56,8 @@ export type SavedTravelerRequest = {
   operatorId?: string;
   operatorDisplayName?: string;
   city?: string;
+  quotedAmount?: number;
+  currency?: string;
 };
 
 function getTrimmedString(value: unknown) {
@@ -199,6 +201,11 @@ function sanitizeTravelerRequest(request: unknown) {
   const operatorId = getTrimmedString(rawRequest.operatorId);
   const operatorDisplayName = getTrimmedString(rawRequest.operatorDisplayName);
   const city = getTrimmedString(rawRequest.city);
+  const quotedAmount =
+    typeof rawRequest.quotedAmount === "number" && Number.isFinite(rawRequest.quotedAmount)
+      ? rawRequest.quotedAmount
+      : undefined;
+  const currency = getTrimmedString(rawRequest.currency);
 
   if (!requestId || !travelerUserId || !status || !createdAt || !updatedAt) {
     return null;
@@ -215,6 +222,8 @@ function sanitizeTravelerRequest(request: unknown) {
     ...(operatorId ? { operatorId } : {}),
     ...(operatorDisplayName ? { operatorDisplayName } : {}),
     ...(city ? { city } : {}),
+    ...(quotedAmount !== undefined ? { quotedAmount } : {}),
+    ...(currency ? { currency } : {}),
   } satisfies SavedTravelerRequest;
 }
 

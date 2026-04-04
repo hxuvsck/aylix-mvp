@@ -2,6 +2,7 @@ import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, ScrollView, Text, View } from "react-native";
 import { getOperatorInbox, type OperatorInboxItem } from "../../lib/api";
+import { getLifecycleStatus, getLifecycleStatusLabel } from "../../lib/request-status";
 import { getSavedProfile } from "../../lib/storage";
 
 type SavedProfile = {
@@ -98,55 +99,61 @@ export default function OperatorInboxScreen() {
             ) : null}
 
             {requests.map((request) => (
-                <View
-                    key={request.requestId}
-                    style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 12 }}
-                >
-                    <Text style={{ fontSize: 16, marginBottom: 4 }}>
-                        {request.locationSummary}
-                    </Text>
-                    <Text style={{ marginBottom: 4 }}>
-                        Traveler: {request.travelerDisplayName || "Traveler"}
-                    </Text>
-                    <Text style={{ marginBottom: 4 }}>
-                        Intent: {intentLabels[request.intent]}
-                    </Text>
-                    <Text style={{ marginBottom: 4 }}>
-                        Quote: {request.quotedAmount !== undefined ? `$${request.quotedAmount}` : "Not quoted"} {request.currency}
-                    </Text>
-                    <Text style={{ marginBottom: 4 }}>
-                        Estimated duration: {request.estimatedDurationMinutes ?? 0} min
-                    </Text>
-                    <Text style={{ marginBottom: 4 }}>
-                        Payment: {request.paymentStatus}
-                    </Text>
-                    <Text style={{ marginBottom: 4 }}>
-                        Request status: {request.requestStatus}
-                    </Text>
-                    <Text style={{ marginBottom: 4 }}>
-                        Nomination status: {request.nominationStatus}
-                    </Text>
-                    <Text style={{ marginBottom: 4 }}>
-                        Accepted operators: {request.acceptedOperatorsCount}
-                    </Text>
-                    <Text style={{ marginBottom: 12 }}>
-                        {request.description || "No additional details yet."}
-                    </Text>
-                    <Button
-                        title="Respond"
-                        onPress={() =>
-                            router.push({
-                                pathname: "/operator/request",
-                                params: {
-                                    requestId: request.requestId,
-                                    travelerDisplayName: request.travelerDisplayName ?? "",
-                                    travelerCity: request.travelerCity ?? "",
-                                    locationSummary: request.locationSummary,
-                                },
-                            })
-                        }
-                    />
-                </View>
+                (() => {
+                    const statusLabel = getLifecycleStatusLabel(request.requestStatus, request.nominationStatus);
+                    const isActionable = ["matched", "accepted"].includes(
+                        getLifecycleStatus(request.requestStatus, request.nominationStatus)
+                    );
+
+                    return (
+                        <View
+                            key={request.requestId}
+                            style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 12 }}
+                        >
+                            <Text style={{ fontSize: 16, marginBottom: 4 }}>
+                                {request.locationSummary}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Traveler: {request.travelerDisplayName || "Traveler"}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Intent: {intentLabels[request.intent]}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Lifecycle: {statusLabel}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Quote: {request.quotedAmount !== undefined ? `$${request.quotedAmount}` : "Not quoted"} {request.currency}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Estimated duration: {request.estimatedDurationMinutes ?? 0} min
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Payment: {request.paymentStatus}
+                            </Text>
+                            <Text style={{ marginBottom: 4 }}>
+                                Action: {isActionable ? "Needs your response" : "Already resolved or waiting"}
+                            </Text>
+                            <Text style={{ marginBottom: 12 }}>
+                                {request.description || "No additional details yet."}
+                            </Text>
+                            <Button
+                                title={isActionable ? "Open Request" : "View Request"}
+                                onPress={() =>
+                                    router.push({
+                                        pathname: "/operator/request",
+                                        params: {
+                                            requestId: request.requestId,
+                                            travelerDisplayName: request.travelerDisplayName ?? "",
+                                            travelerCity: request.travelerCity ?? "",
+                                            locationSummary: request.locationSummary,
+                                        },
+                                    })
+                                }
+                            />
+                        </View>
+                    );
+                })()
             ))}
 
             <Button title="Back to Operator Home" onPress={() => router.replace("/operator/home")} />

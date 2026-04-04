@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, Text, View } from "react-native";
+import { getLifecycleStatusLabel } from "../../lib/request-status";
 import { getSavedProfile, getSavedTravelerRequests, resetLocalIdentity } from "../../lib/storage";
 
 type SavedProfile = {
@@ -69,7 +70,7 @@ export default function TravelerHomeScreen() {
                     <>
                         <Text style={{ marginBottom: 4 }}>Total requests: {requests.length}</Text>
                         <Text>
-                            Latest request status: {latestRequest?.status || "Unknown"}
+                            Latest request status: {latestRequest ? getLifecycleStatusLabel(latestRequest.status) : "Unknown"}
                         </Text>
                     </>
                 ) : (

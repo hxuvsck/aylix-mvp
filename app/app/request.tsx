@@ -19,6 +19,7 @@ import {
     type RequestResponseItem,
     type Urgency,
 } from "../lib/api";
+import { getLifecycleStatusLabel } from "../lib/request-status";
 import {
     DEFAULT_REVIEW_COUNT,
     DEFAULT_TRUST_SCORE,
@@ -93,6 +94,8 @@ export default function RequestScreen() {
             createdAt: request.createdAt,
             updatedAt: new Date().toISOString(),
             intent: request.intent,
+            ...(request.quotedAmount !== undefined ? { quotedAmount: request.quotedAmount } : {}),
+            ...(request.currency ? { currency: request.currency } : {}),
             ...(operator?.operatorId ? { operatorId: operator.operatorId } : {}),
             ...(operator?.displayName ? { operatorDisplayName: operator.displayName } : {}),
             ...(operator?.city ? { city: operator.city } : {}),
@@ -432,7 +435,7 @@ export default function RequestScreen() {
 
                 {activeRequest ? (
                     <Text style={{ marginTop: 12, color: "#444" }}>
-                        Request status: {activeRequest.status} • Nominations: {nominations.length}
+                        Request status: {getLifecycleStatusLabel(activeRequest.status)} • Nominations: {nominations.length}
                     </Text>
                 ) : null}
 
@@ -501,7 +504,7 @@ export default function RequestScreen() {
                                 Capabilities: {(selectedOperator.capabilities ?? []).join(", ") || "None set"}
                             </Text>
                             <Text style={{ marginBottom: 4 }}>
-                                Status: {activeRequest?.paymentStatus === "reserved" ? "Reserved" : "Selected"} • Payment {activeRequest?.paymentStatus ?? "none"}
+                                Status: {getLifecycleStatusLabel(activeRequest?.status)} • Payment {activeRequest?.paymentStatus ?? "none"}
                             </Text>
                             <Text style={{ marginBottom: 4 }}>
                                 Request lock: {activeRequest?.selectedOperatorId ? "Locked to this operator" : "Not locked yet"}

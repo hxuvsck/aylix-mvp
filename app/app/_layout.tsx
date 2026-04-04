@@ -19,6 +19,7 @@ export default function RootLayout() {
         <Stack.Screen name="entry" options={{ title: 'Entry' }} />
         <Stack.Screen name="traveler/home" options={{ title: 'Traveler Home' }} />
         <Stack.Screen name="traveler/requests" options={{ title: 'My Requests' }} />
+        <Stack.Screen name="traveler/request" options={{ title: 'Request Detail' }} />
         <Stack.Screen name="operator/home" options={{ title: 'Operator Home' }} />
         <Stack.Screen name="operator/inbox" options={{ title: 'Operator Inbox' }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

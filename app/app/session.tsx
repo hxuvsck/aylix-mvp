@@ -8,6 +8,7 @@ import {
     type HelpIntent,
     type ReservedSessionSummary,
 } from "../lib/api";
+import { getLifecycleStatusLabel } from "../lib/request-status";
 import { getSavedProfile, saveTravelerRequest } from "../lib/storage";
 
 type SavedProfile = {
@@ -68,6 +69,8 @@ export default function SessionScreen() {
             createdAt: nextSummary.startedAt ?? nextSummary.completedAt ?? new Date().toISOString(),
             updatedAt: new Date().toISOString(),
             intent: nextSummary.intent,
+            ...(nextSummary.quotedAmount !== undefined ? { quotedAmount: nextSummary.quotedAmount } : {}),
+            ...(nextSummary.currency ? { currency: nextSummary.currency } : {}),
             ...(nextSummary.operator?.userId ? { operatorId: nextSummary.operator.userId } : {}),
             ...(nextSummary.operator?.displayName ? { operatorDisplayName: nextSummary.operator.displayName } : {}),
             ...(nextSummary.locationSummary ? { city: nextSummary.locationSummary } : {}),
@@ -191,7 +194,7 @@ export default function SessionScreen() {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white", padding: 20 }}>
                 <Text style={{ marginBottom: 12, textAlign: "center" }}>
-                    This reserved session is not available right now.
+                    No active session is available right now.
                 </Text>
                 <Button title="Back to profile" onPress={() => router.replace("/profile")} />
             </View>
@@ -244,7 +247,7 @@ export default function SessionScreen() {
                     Estimated duration: {summary.estimatedDurationMinutes ?? 0} min
                 </Text>
                 <Text style={{ marginBottom: 4 }}>
-                    Request status: {summary.requestStatus}
+                    Lifecycle: {getLifecycleStatusLabel(summary.requestStatus)}
                 </Text>
                 <Text style={{ marginBottom: 4 }}>
                     Payment status: {summary.paymentStatus}
