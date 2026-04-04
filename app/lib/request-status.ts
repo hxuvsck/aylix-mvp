@@ -62,3 +62,11 @@ export function getLifecycleStatusLabel(
             return "Declined";
     }
 }
+
+export function isActiveLifecycleStatus(
+    requestStatus?: string,
+    nominationStatus?: string
+) {
+    const lifecycleStatus = getLifecycleStatus(requestStatus, nominationStatus);
+    return ["searching", "matched", "pending", "accepted", "in_session"].includes(lifecycleStatus);
+}

@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, Text, View } from "react-native";
-import { getLifecycleStatusLabel } from "../../lib/request-status";
+import { getLifecycleStatus, getLifecycleStatusLabel, isActiveLifecycleStatus } from "../../lib/request-status";
 import { getSavedProfile, getSavedTravelerRequests, resetLocalIdentity } from "../../lib/storage";
 
 type SavedProfile = {
@@ -15,6 +15,8 @@ type SavedTravelerRequest = {
     requestId: string;
     status: string;
     createdAt: string;
+    updatedAt: string;
+    operatorDisplayName?: string;
 };
 
 export default function TravelerHomeScreen() {
@@ -39,6 +41,7 @@ export default function TravelerHomeScreen() {
     };
 
     const latestRequest = requests[0] ?? null;
+    const currentRequest = requests.find((request) => isActiveLifecycleStatus(request.status)) ?? null;
 
     if (isLoading) {
         return (
@@ -61,6 +64,37 @@ export default function TravelerHomeScreen() {
                 <View style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 20 }}>
                     <Text style={{ marginBottom: 4 }}>Hello, {profile.displayName}</Text>
                     <Text>City: {profile.city || "Not set"}</Text>
+                </View>
+            ) : null}
+
+            {currentRequest ? (
+                <View style={{ borderWidth: 1, borderColor: "#0a7ea4", padding: 12, marginBottom: 20, backgroundColor: "#e7f6fb" }}>
+                    <Text style={{ fontSize: 16, marginBottom: 8 }}>Current Request</Text>
+                    <Text style={{ marginBottom: 4 }}>
+                        Operator: {currentRequest.operatorDisplayName || "Not selected yet"}
+                    </Text>
+                    <Text style={{ marginBottom: 4 }}>
+                        Status: {getLifecycleStatusLabel(currentRequest.status)}
+                    </Text>
+                    <Text style={{ marginBottom: 12 }}>
+                        Updated: {new Date(currentRequest.updatedAt).toLocaleString()}
+                    </Text>
+                    <Button
+                        title={
+                            ["accepted", "in_session"].includes(getLifecycleStatus(currentRequest.status))
+                                ? "Open Session"
+                                : "View Request"
+                        }
+                        onPress={() =>
+                            router.push({
+                                pathname:
+                                    ["accepted", "in_session"].includes(getLifecycleStatus(currentRequest.status))
+                                        ? "/session"
+                                        : "/traveler/request",
+                                params: { requestId: currentRequest.requestId },
+                            })
+                        }
+                    />
                 </View>
             ) : null}
 

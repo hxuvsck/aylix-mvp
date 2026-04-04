@@ -1,7 +1,8 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, Text, View } from "react-native";
-import { getOperatorInbox } from "../../lib/api";
+import { getOperatorInbox, type OperatorInboxItem } from "../../lib/api";
+import { getLifecycleStatus, getLifecycleStatusLabel, isActiveLifecycleStatus } from "../../lib/request-status";
 import { getSavedProfile, resetLocalIdentity, updateSavedProfile } from "../../lib/storage";
 
 type SavedProfile = {
@@ -17,6 +18,7 @@ export default function OperatorHomeScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [isAvailable, setIsAvailable] = useState(true);
     const [incomingCount, setIncomingCount] = useState(0);
+    const [requests, setRequests] = useState<OperatorInboxItem[]>([]);
 
     useEffect(() => {
         const loadProfile = async () => {
@@ -25,6 +27,7 @@ export default function OperatorHomeScreen() {
             setIsAvailable(savedProfile?.isAvailable !== false);
             if (savedProfile?.userId) {
                 const response = await getOperatorInbox(savedProfile.userId).catch(() => ({ requests: [] }));
+                setRequests(response.requests);
                 setIncomingCount(response.requests.length);
             }
             setIsLoading(false);
@@ -48,6 +51,10 @@ export default function OperatorHomeScreen() {
         router.replace("/entry");
     };
 
+    const currentWork = requests.find((request) =>
+        isActiveLifecycleStatus(request.requestStatus, request.nominationStatus)
+    ) ?? null;
+
     if (isLoading) {
         return (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
@@ -70,6 +77,46 @@ export default function OperatorHomeScreen() {
                     <Text style={{ marginBottom: 4 }}>Hello, {profile.displayName}</Text>
                     <Text style={{ marginBottom: 4 }}>City: {profile.city || "Not set"}</Text>
                     <Text>Availability: {isAvailable ? "Available" : "Not Available"}</Text>
+                </View>
+            ) : null}
+
+            {currentWork ? (
+                <View style={{ borderWidth: 1, borderColor: "#0a7ea4", padding: 12, marginBottom: 20, backgroundColor: "#e7f6fb" }}>
+                    <Text style={{ fontSize: 16, marginBottom: 8 }}>Current Work</Text>
+                    <Text style={{ marginBottom: 4 }}>
+                        Traveler: {currentWork.travelerDisplayName || "Traveler"}
+                    </Text>
+                    <Text style={{ marginBottom: 4 }}>
+                        Status: {getLifecycleStatusLabel(currentWork.requestStatus, currentWork.nominationStatus)}
+                    </Text>
+                    <Text style={{ marginBottom: 12 }}>
+                        Updated by request: {new Date(currentWork.createdAt).toLocaleString()}
+                    </Text>
+                    <Button
+                        title={
+                            getLifecycleStatus(currentWork.requestStatus, currentWork.nominationStatus) === "in_session"
+                                ? "Open Session"
+                                : "Open Request"
+                        }
+                        onPress={() =>
+                            router.push({
+                                pathname:
+                                    getLifecycleStatus(currentWork.requestStatus, currentWork.nominationStatus) === "in_session"
+                                        ? "/session"
+                                        : "/operator/request",
+                                params: {
+                                    requestId: currentWork.requestId,
+                                    ...(getLifecycleStatus(currentWork.requestStatus, currentWork.nominationStatus) === "in_session"
+                                        ? {}
+                                        : {
+                                              travelerDisplayName: currentWork.travelerDisplayName ?? "",
+                                              travelerCity: currentWork.travelerCity ?? "",
+                                              locationSummary: currentWork.locationSummary,
+                                          }),
+                                },
+                            })
+                        }
+                    />
                 </View>
             ) : null}
 
