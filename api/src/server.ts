@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import express from "express";
 import cors from "cors";
+import { mockOperatorSeeds } from "./mock-operators.js";
 
 const app = express();
 const PORT = 4000;
+const QA_MODE = true;
 
 const roleValues = ["guide", "local", "expert", "companion"] as const;
 const helpIntentValues = ["food", "navigation", "translation", "explore", "emergency"] as const;
@@ -280,95 +282,10 @@ const helpRequests: HelpRequest[] = [];
 const operatorNominations: OperatorNomination[] = [];
 const sessionReviews: SessionReview[] = [];
 
-const seedProfiles = [
-  {
-    email: "khuslen@test.com",
-    profile: {
-      displayName: "Khuslen",
-      city: "Ulaanbaatar",
-      roles: ["local", "guide"],
-      capabilities: ["food", "explore"],
-      languages: ["en", "mn"],
-      interests: ["food", "culture", "walking"],
-      vibeTags: ["calm", "curious"],
-      travelStyle: ["local-first", "explore"],
-      helpTopics: ["arrival", "food", "safety"],
-    },
-  },
-  {
-    email: "saraa@test.com",
-    profile: {
-      displayName: "Saraa",
-      city: "Ulaanbaatar",
-      roles: ["local", "guide"],
-      capabilities: ["food", "explore"],
-      languages: ["en", "mn"],
-      interests: ["food", "culture"],
-      vibeTags: ["calm", "curious"],
-      travelStyle: ["local-first", "explore"],
-      helpTopics: ["arrival", "food"],
-    },
-  },
-  {
-    email: "temuulen@test.com",
-    profile: {
-      displayName: "Temuulen",
-      city: "Ulaanbaatar",
-      roles: ["companion", "local"],
-      capabilities: ["food", "explore"],
-      languages: ["en"],
-      interests: ["food", "nightlife"],
-      vibeTags: ["curious", "social"],
-      travelStyle: ["explore"],
-      helpTopics: ["food", "nightlife"],
-    },
-  },
-  {
-    email: "nomin@test.com",
-    profile: {
-      displayName: "Nomin",
-      city: "Ulaanbaatar",
-      roles: ["local", "expert"],
-      capabilities: ["navigation", "emergency"],
-      languages: ["mn"],
-      interests: ["culture", "shopping"],
-      vibeTags: ["calm"],
-      travelStyle: ["local-first"],
-      helpTopics: ["arrival", "safety"],
-    },
-  },
-  {
-    email: "bat@test.com",
-    profile: {
-      displayName: "Bat",
-      city: "Darkhan",
-      roles: ["local"],
-      capabilities: ["navigation"],
-      languages: ["mn"],
-      interests: ["business"],
-      vibeTags: ["fast-paced"],
-      travelStyle: ["efficient"],
-      helpTopics: ["transport"],
-    },
-  },
-  {
-    email: "oya@test.com",
-    profile: {
-      displayName: "Oya",
-      city: "Seoul",
-      roles: ["expert"],
-      capabilities: ["translation"],
-      languages: ["kr"],
-      interests: ["luxury"],
-      vibeTags: ["energetic"],
-      travelStyle: ["planned"],
-      helpTopics: ["shopping"],
-    },
-  },
-] satisfies Array<{
+const seedProfiles: Array<{
   email: string;
   profile: Omit<Profile, "id" | "userId">;
-}>;
+}> = mockOperatorSeeds;
 
 function getTrimmedString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -577,31 +494,6 @@ function getRoleBoostRoles(intent: HelpIntent): Role[] {
 }
 
 function getRequestMatchResult(helpRequest: HelpRequest, candidateProfile: Profile): MatchResult {
-  let score = 1;
-  const reasons = ["Available now"];
-  const trustScore = candidateProfile.trustScore ?? 0;
-  const matchingRoles = (candidateProfile.roles ?? []).filter((role) =>
-    getRoleBoostRoles(helpRequest.intent).includes(role)
-  );
-
-  if ((candidateProfile.capabilities ?? []).includes(helpRequest.intent)) {
-    score += 5;
-    reasons.push(`Matches your ${helpRequest.intent} request`);
-  }
-
-  if (matchingRoles.length > 0) {
-    score += 2;
-    reasons.push(`Good fit for ${helpRequest.intent} help`);
-  }
-
-  if (trustScore > 0) {
-    score += trustScore;
-  }
-
-  if (trustScore >= 4) {
-    reasons.push("High local trust");
-  }
-
   return {
     userId: candidateProfile.userId,
     displayName: candidateProfile.displayName,
@@ -609,9 +501,26 @@ function getRequestMatchResult(helpRequest: HelpRequest, candidateProfile: Profi
     ...(candidateProfile.roles ? { roles: candidateProfile.roles } : {}),
     ...(candidateProfile.capabilities ? { capabilities: candidateProfile.capabilities } : {}),
     ...(candidateProfile.trustScore !== undefined ? { trustScore: candidateProfile.trustScore } : {}),
-    score: Number(score.toFixed(1)),
-    reasons,
+    score: 1,
+    reasons: ["Available now", "Debug mode: matching filters bypassed"],
   };
+}
+
+function getQaModeOperatorResults(excludedOperatorIds: string[] = []): MatchResult[] {
+  const excludedIds = new Set(excludedOperatorIds);
+
+  return profiles
+    .filter((profile) => !excludedIds.has(profile.userId) && profile.isAvailable === true)
+    .map((profile) => ({
+      userId: profile.userId,
+      displayName: profile.displayName,
+      ...(profile.city ? { city: profile.city } : {}),
+      ...(profile.roles ? { roles: profile.roles } : {}),
+      ...(profile.capabilities ? { capabilities: profile.capabilities } : {}),
+      ...(profile.trustScore !== undefined ? { trustScore: profile.trustScore } : {}),
+      score: 1,
+      reasons: ["Available now", "QA mode: all available operators returned"],
+    }));
 }
 
 function getQuotedAmountForIntent(intent: HelpIntent) {
@@ -677,15 +586,18 @@ function getRankedOperatorsForRequest(
   request: HelpRequest,
   excludedOperatorIds: string[] = []
 ) {
+  if (QA_MODE) {
+    return getQaModeOperatorResults([request.userId, ...excludedOperatorIds]);
+  }
+
   const excludedIds = new Set([request.userId, ...excludedOperatorIds]);
 
   return profiles
     .filter(
       (profile) =>
-        !excludedIds.has(profile.userId) && canParticipateAsOperator(profile)
+        !excludedIds.has(profile.userId) && profile.isAvailable === true
     )
-    .map((profile) => getRequestMatchResult(request, profile))
-    .sort((a, b) => b.score - a.score);
+    .map((profile) => getRequestMatchResult(request, profile));
 }
 
 function createNominationsForRequest(request: HelpRequest, matches: MatchResult[], limit = 3) {
@@ -2266,25 +2178,27 @@ app.get("/match/:userId", (req, res) => {
     return res.status(404).json({ error: "Profile not found" });
   }
 
-  const matches: MatchResult[] = profiles
-    .filter(
-      (profile) =>
-        profile.userId !== currentProfile.userId && canParticipateAsOperator(profile)
-    )
-    .map((profile) => {
-      const score = getMatchScore(currentProfile, profile);
+  const matches: MatchResult[] = QA_MODE
+    ? getQaModeOperatorResults([currentProfile.userId]).slice(0, 5)
+    : profiles
+        .filter(
+          (profile) =>
+            profile.userId !== currentProfile.userId && canParticipateAsOperator(profile)
+        )
+        .map((profile) => {
+          const score = getMatchScore(currentProfile, profile);
 
-      return {
-        userId: profile.userId,
-        displayName: profile.displayName,
-        ...(profile.city ? { city: profile.city } : {}),
-        score,
-        reasons: getMatchReasons(currentProfile, profile),
-      };
-    })
-    .filter((match) => match.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+          return {
+            userId: profile.userId,
+            displayName: profile.displayName,
+            ...(profile.city ? { city: profile.city } : {}),
+            score,
+            reasons: getMatchReasons(currentProfile, profile),
+          };
+        })
+        .filter((match) => match.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5);
 
   res.json({ matches });
 });
