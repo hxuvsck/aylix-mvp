@@ -1,11 +1,12 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, Text, View } from "react-native";
-import { getSavedProfile } from "../../lib/storage";
+import { getSavedProfile, resetLocalIdentity } from "../../lib/storage";
 
 type SavedProfile = {
     displayName?: string;
     userId?: string;
+    role?: "traveler" | "operator";
 };
 
 export default function TravelerHomeScreen() {
@@ -20,6 +21,11 @@ export default function TravelerHomeScreen() {
 
         void loadProfile();
     }, []);
+
+    const handleStartOver = async () => {
+        await resetLocalIdentity();
+        router.replace("/entry");
+    };
 
     if (isLoading) {
         return (
@@ -52,7 +58,7 @@ export default function TravelerHomeScreen() {
                 <Button title="My Requests" onPress={() => router.push("/traveler/requests")} />
             </View>
 
-            <Button title="Back to Entry" onPress={() => router.back()} />
+            <Button title="Start Over" onPress={() => void handleStartOver()} />
         </View>
     );
 }

@@ -1,12 +1,13 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, Text, View } from "react-native";
-import { getSavedProfile } from "../../lib/storage";
+import { getSavedProfile, resetLocalIdentity, updateSavedProfile } from "../../lib/storage";
 
 type SavedProfile = {
     displayName?: string;
     userId?: string;
     isAvailable?: boolean;
+    role?: "traveler" | "operator";
 };
 
 export default function OperatorHomeScreen() {
@@ -24,6 +25,21 @@ export default function OperatorHomeScreen() {
 
         void loadProfile();
     }, []);
+
+    const handleToggleAvailability = async () => {
+        const nextIsAvailable = !isAvailable;
+        setIsAvailable(nextIsAvailable);
+
+        const updatedProfile = await updateSavedProfile({ isAvailable: nextIsAvailable });
+        if (updatedProfile) {
+            setProfile(updatedProfile);
+        }
+    };
+
+    const handleStartOver = async () => {
+        await resetLocalIdentity();
+        router.replace("/entry");
+    };
 
     if (isLoading) {
         return (
@@ -58,11 +74,11 @@ export default function OperatorHomeScreen() {
             <View style={{ marginBottom: 24 }}>
                 <Button
                     title={isAvailable ? "Set Not Available" : "Set Available"}
-                    onPress={() => setIsAvailable((current) => !current)}
+                    onPress={() => void handleToggleAvailability()}
                 />
             </View>
 
-            <Button title="Back to Entry" onPress={() => router.back()} />
+            <Button title="Start Over" onPress={() => void handleStartOver()} />
         </View>
     );
 }

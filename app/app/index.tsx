@@ -1,43 +1,50 @@
-import { router } from "expo-router";
-import { useState } from "react";
-import { Button, Text, View } from "react-native";
-import { saveSelectedRole, type SelectedAppRole } from "../lib/storage";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, View } from "react-native";
+import { Redirect } from "expo-router";
+import { getSavedProfile, getSelectedRole, type SelectedAppRole } from "../lib/storage";
 
-export default function EntryScreen() {
-    const [selectedRole, setSelectedRole] = useState<SelectedAppRole | null>(null);
+export default function IndexScreen() {
+    const [isLoading, setIsLoading] = useState(true);
+    const [targetRoute, setTargetRoute] = useState<string | null>(null);
 
-    const handleContinue = async (role: SelectedAppRole) => {
-        setSelectedRole(role);
-        await saveSelectedRole(role);
-        router.push(role === "traveler" ? "/traveler/home" : "/operator/home");
-    };
+    useEffect(() => {
+        const loadIdentity = async () => {
+            const savedProfile = await getSavedProfile();
 
-    return (
-        <View style={{ flex: 1, justifyContent: "center", padding: 24, backgroundColor: "white" }}>
-            <Text style={{ fontSize: 30, marginBottom: 8 }}>Welcome to Aylix</Text>
-            <Text style={{ fontSize: 16, color: "#444", marginBottom: 24 }}>
-                Choose how you want to continue in the MVP flow.
-            </Text>
+            if (savedProfile?.role === "traveler") {
+                setTargetRoute("/traveler/home");
+                setIsLoading(false);
+                return;
+            }
 
-            <View style={{ marginBottom: 12 }}>
-                <Button
-                    title={
-                        selectedRole === "traveler"
-                            ? "Continue as Traveler selected"
-                            : "Continue as Traveler"
-                    }
-                    onPress={() => void handleContinue("traveler")}
-                />
+            if (savedProfile?.role === "operator") {
+                setTargetRoute("/operator/home");
+                setIsLoading(false);
+                return;
+            }
+
+            const selectedRole = (await getSelectedRole()) as SelectedAppRole | null;
+
+            if (selectedRole === "traveler" || selectedRole === "operator") {
+                setTargetRoute("/entry");
+                setIsLoading(false);
+                return;
+            }
+
+            setTargetRoute("/entry");
+            setIsLoading(false);
+        };
+
+        void loadIdentity();
+    }, []);
+
+    if (isLoading || !targetRoute) {
+        return (
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
+                <ActivityIndicator />
             </View>
+        );
+    }
 
-            <Button
-                title={
-                    selectedRole === "operator"
-                        ? "Continue as Operator selected"
-                        : "Continue as Operator"
-                }
-                onPress={() => void handleContinue("operator")}
-            />
-        </View>
-    );
+    return <Redirect href={targetRoute as "/entry"} />;
 }

@@ -76,11 +76,17 @@ function sanitizeProfile(profile: unknown) {
   const userId = getTrimmedString(rawProfile.userId);
   const displayName = getTrimmedString(rawProfile.displayName);
   const city = getTrimmedString(rawProfile.city);
+  const role = getTrimmedString(rawProfile.role);
   const roles = getStringArray(rawProfile.roles);
   const capabilities = getStringArray(rawProfile.capabilities);
   const languages = getStringArray(rawProfile.languages);
 
-  if (!uuidPattern.test(userId) || !displayName || !city) {
+  if (
+    !uuidPattern.test(userId) ||
+    !displayName ||
+    !city ||
+    !["traveler", "operator"].includes(role)
+  ) {
     return null;
   }
 
@@ -95,6 +101,7 @@ function sanitizeProfile(profile: unknown) {
     ...rawProfile,
     userId,
     displayName,
+    role,
     city,
     roles,
     capabilities,
@@ -156,6 +163,26 @@ export async function saveProfile(profile: unknown) {
   await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(sanitizedProfile));
 }
 
+export async function updateSavedProfile(updates: Record<string, unknown>) {
+  const currentProfile = await getSavedProfile();
+
+  if (!currentProfile) {
+    return null;
+  }
+
+  const nextProfile = sanitizeProfile({
+    ...currentProfile,
+    ...updates,
+  });
+
+  if (!nextProfile) {
+    throw new Error("Updated profile is invalid and could not be saved locally.");
+  }
+
+  await AsyncStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(nextProfile));
+  return nextProfile;
+}
+
 export async function getSavedProfile() {
   const raw = await AsyncStorage.getItem(PROFILE_STORAGE_KEY);
 
@@ -194,6 +221,11 @@ export async function getSelectedRole() {
 
 export async function clearSelectedRole() {
   await AsyncStorage.removeItem(SELECTED_ROLE_STORAGE_KEY);
+}
+
+export async function resetLocalIdentity() {
+  await clearSavedProfile();
+  await clearSelectedRole();
 }
 
 export async function saveLatestReview(review: LatestReview) {

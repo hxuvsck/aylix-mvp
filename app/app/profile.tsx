@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { Button, ScrollView, Text, View } from "react-native";
 import {
-    clearSavedProfile,
+    resetLocalIdentity,
     getLatestReview,
     getSavedProfile,
     type LatestReview,
@@ -162,9 +162,9 @@ export default function ProfileScreen() {
         void loadProfile();
     }, []);
 
-    const handleReset = async () => {
-        await clearSavedProfile();
-        router.replace("/onboarding");
+const handleReset = async () => {
+        await resetLocalIdentity();
+        router.replace("/entry");
     };
 
     if (isLoadingProfile) {

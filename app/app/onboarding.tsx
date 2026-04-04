@@ -1,8 +1,8 @@
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { capabilitiesOptions, createProfile, createUser, personalityOptions, roleOptions } from "../lib/api";
-import { getSelectedRole, saveProfile } from "../lib/storage";
+import { getSelectedRole, saveProfile, type SelectedAppRole } from "../lib/storage";
 
 const languageOptions = [
     "English",
@@ -82,6 +82,8 @@ const cityOptions = [
 ] as const;
 
 export default function OnboardingScreen() {
+    const [selectedRole, setSelectedRole] = useState<SelectedAppRole | null>(null);
+    const [isLoadingRole, setIsLoadingRole] = useState(true);
     const [name, setName] = useState("");
     const [city, setCity] = useState("");
     const [isAvailable, setIsAvailable] = useState(true);
@@ -96,6 +98,16 @@ export default function OnboardingScreen() {
     const [result, setResult] = useState("Ready");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    useEffect(() => {
+        const loadSelectedRole = async () => {
+            const role = await getSelectedRole();
+            setSelectedRole(role);
+            setIsLoadingRole(false);
+        };
+
+        void loadSelectedRole();
+    }, []);
+
     function toggleSelection<T extends string>(value: T, selected: T[], setSelected: (next: T[]) => void) {
         setSelected(
             selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value]
@@ -104,16 +116,16 @@ export default function OnboardingScreen() {
 
     const trimmedName = name.trim();
     const trimmedCity = city.trim();
-    const operatorIntent = roles.length > 0 || capabilities.length > 0 || languages.length > 0;
+    const isOperatorRole = selectedRole === "operator";
     const validationMessage = !trimmedName
         ? "Display name is required"
         : !trimmedCity
           ? "City is required"
-          : operatorIntent && roles.length === 0
+          : isOperatorRole && roles.length === 0
             ? "Select at least one role"
-            : operatorIntent && capabilities.length === 0
+            : isOperatorRole && capabilities.length === 0
               ? "Add at least one capability"
-              : operatorIntent && languages.length === 0
+              : isOperatorRole && languages.length === 0
                 ? "Add at least one language"
                 : "";
 
@@ -209,33 +221,42 @@ export default function OnboardingScreen() {
                 email: `${Date.now()}@test.com`,
             });
 
-            const profile = await createProfile({
+            const profilePayload = {
                 userId: user.id,
                 displayName: trimmedName,
-                isAvailable,
-                roles,
-                capabilities,
-                personality,
                 ...(trimmedCity ? { city: trimmedCity } : {}),
                 languages,
                 interests,
                 vibeTags: vibe,
                 travelStyle,
-                helpTopics,
+            };
+
+            const profile = await createProfile({
+                ...profilePayload,
+                ...(isOperatorRole
+                    ? {
+                          isAvailable,
+                          roles,
+                          capabilities,
+                          personality,
+                          helpTopics,
+                      }
+                    : {}),
             });
 
-            await saveProfile(profile);
+            await saveProfile({
+                ...profile,
+                role: selectedRole,
+            });
             setResult("Profile created");
 
-            const selectedRole = await getSelectedRole();
-
             if (selectedRole === "operator") {
-                router.push("/operator/home");
+                router.replace("/operator/home");
                 return;
             }
 
             if (selectedRole === "traveler") {
-                router.push("/traveler/home");
+                router.replace("/traveler/home");
                 return;
             }
 
@@ -263,6 +284,25 @@ export default function OnboardingScreen() {
         }
     };
 
+    if (isLoadingRole) {
+        return (
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white" }}>
+                <Text>Loading onboarding...</Text>
+            </View>
+        );
+    }
+
+    if (!selectedRole) {
+        return (
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "white", padding: 20 }}>
+                <Text style={{ marginBottom: 12, textAlign: "center" }}>
+                    Choose whether you are continuing as a traveler or operator before onboarding.
+                </Text>
+                <Button title="Back to Entry" onPress={() => router.replace("/entry")} />
+            </View>
+        );
+    }
+
     return (
         <ScrollView
             style={{ flex: 1, backgroundColor: "white" }}
@@ -272,11 +312,14 @@ export default function OnboardingScreen() {
             <View>
                 <Text style={{ fontSize: 28, marginBottom: 8 }}>Meet your Aylix profile</Text>
                 <Text style={{ fontSize: 16, marginBottom: 20, color: "#444" }}>
-                    Tell us how you travel and how you like to help so your profile feels match-ready.
+                    {selectedRole === "operator"
+                        ? "Tell us how you help so your operator profile is ready for the MVP flow."
+                        : "Tell us how you travel so your traveler profile is ready for the MVP flow."}
                 </Text>
                 <Text style={{ marginBottom: 16, color: "#444" }}>
-                    Every profile needs a display name and city. To appear as a helper, add at least one role,
-                    one capability, and one language.
+                    {selectedRole === "operator"
+                        ? "Every operator profile needs a display name, city, role, capability, and at least one language."
+                        : "Every traveler profile needs a display name and city."}
                 </Text>
 
                 <TextInput
@@ -288,57 +331,63 @@ export default function OnboardingScreen() {
 
                 {renderSingleSelectGroup("City", cityOptions, city, setCity)}
 
-                <Text style={{ marginBottom: 8 }}>
-                    Availability: {isAvailable ? "Available to help" : "Not available"}
-                </Text>
-                <View style={{ marginBottom: 10 }}>
-                    <Button
-                        title={isAvailable ? "Set as not available" : "Set as available"}
-                        onPress={() => setIsAvailable((current) => !current)}
-                    />
-                </View>
-
-                <Text style={{ marginBottom: 8 }}>Roles</Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
-                    {roleOptions.map((role) => (
-                        <View key={role} style={{ marginRight: 8, marginBottom: 8 }}>
+                {selectedRole === "operator" ? (
+                    <>
+                        <Text style={{ marginBottom: 8 }}>
+                            Availability: {isAvailable ? "Available to help" : "Not available"}
+                        </Text>
+                        <View style={{ marginBottom: 10 }}>
                             <Button
-                                title={roles.includes(role) ? `${role} selected` : role}
-                                onPress={() => toggleSelection(role, roles, setRoles)}
+                                title={isAvailable ? "Set as not available" : "Set as available"}
+                                onPress={() => setIsAvailable((current) => !current)}
                             />
                         </View>
-                    ))}
-                </View>
 
-                <Text style={{ marginBottom: 8 }}>Capabilities</Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
-                    {capabilitiesOptions.map((capability) => (
-                        <View key={capability} style={{ marginRight: 8, marginBottom: 8 }}>
-                            <Button
-                                title={capabilities.includes(capability) ? `${capability} selected` : capability}
-                                onPress={() => toggleSelection(capability, capabilities, setCapabilities)}
-                            />
+                        <Text style={{ marginBottom: 8 }}>Roles</Text>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
+                            {roleOptions.map((role) => (
+                                <View key={role} style={{ marginRight: 8, marginBottom: 8 }}>
+                                    <Button
+                                        title={roles.includes(role) ? `${role} selected` : role}
+                                        onPress={() => toggleSelection(role, roles, setRoles)}
+                                    />
+                                </View>
+                            ))}
                         </View>
-                    ))}
-                </View>
 
-                <Text style={{ marginBottom: 8 }}>Personality</Text>
-                <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
-                    {personalityOptions.map((trait) => (
-                        <View key={trait} style={{ marginRight: 8, marginBottom: 8 }}>
-                            <Button
-                                title={personality.includes(trait) ? `${trait} selected` : trait}
-                                onPress={() => toggleSelection(trait, personality, setPersonality)}
-                            />
+                        <Text style={{ marginBottom: 8 }}>Capabilities</Text>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
+                            {capabilitiesOptions.map((capability) => (
+                                <View key={capability} style={{ marginRight: 8, marginBottom: 8 }}>
+                                    <Button
+                                        title={capabilities.includes(capability) ? `${capability} selected` : capability}
+                                        onPress={() => toggleSelection(capability, capabilities, setCapabilities)}
+                                    />
+                                </View>
+                            ))}
                         </View>
-                    ))}
-                </View>
+
+                        <Text style={{ marginBottom: 8 }}>Personality</Text>
+                        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
+                            {personalityOptions.map((trait) => (
+                                <View key={trait} style={{ marginRight: 8, marginBottom: 8 }}>
+                                    <Button
+                                        title={personality.includes(trait) ? `${trait} selected` : trait}
+                                        onPress={() => toggleSelection(trait, personality, setPersonality)}
+                                    />
+                                </View>
+                            ))}
+                        </View>
+                    </>
+                ) : null}
 
                 {renderSelectableGroup("Languages", languageOptions, languages, setLanguages)}
                 {renderSelectableGroup("Interests", interestOptions, interests, setInterests)}
                 {renderSelectableGroup("Vibe", vibeOptions, vibe, setVibe)}
                 {renderSelectableGroup("Travel style", travelStyleOptions, travelStyle, setTravelStyle)}
-                {renderSelectableGroup("Help topics", helpTopicOptions, helpTopics, setHelpTopics)}
+                {selectedRole === "operator"
+                    ? renderSelectableGroup("Help topics", helpTopicOptions, helpTopics, setHelpTopics)
+                    : null}
 
                 <Button
                     title={isSubmitting ? "Creating your profile..." : "Create Aylix Profile"}
