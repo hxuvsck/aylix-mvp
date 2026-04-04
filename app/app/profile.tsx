@@ -11,6 +11,7 @@ import {
 type ProfileData = {
     userId?: string;
     displayName?: string;
+    role?: "traveler" | "operator";
     isAvailable?: boolean;
     roles?: string[];
     capabilities?: string[];
@@ -199,9 +200,12 @@ const handleReset = async () => {
 
                 <Text style={{ marginBottom: 8 }}>User ID: {profile.userId}</Text>
                 <Text style={{ marginBottom: 8 }}>Name: {profile.displayName}</Text>
-                <Text style={{ marginBottom: 8 }}>
-                    Availability: {profile.isAvailable === false ? "Not available" : "Available to help"}
-                </Text>
+                <Text style={{ marginBottom: 8 }}>Role: {profile.role}</Text>
+                {profile.role === "operator" ? (
+                    <Text style={{ marginBottom: 8 }}>
+                        Availability: {profile.isAvailable === false ? "Not available" : "Available to help"}
+                    </Text>
+                ) : null}
                 <Text style={{ marginBottom: 8 }}>City: {profile.city}</Text>
                 <Text style={{ marginBottom: 8 }}>Roles: {(profile.roles ?? []).join(", ") || "None set"}</Text>
                 <Text style={{ marginBottom: 8 }}>

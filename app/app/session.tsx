@@ -8,7 +8,7 @@ import {
     type HelpIntent,
     type ReservedSessionSummary,
 } from "../lib/api";
-import { getSavedProfile } from "../lib/storage";
+import { getSavedProfile, saveTravelerRequest } from "../lib/storage";
 
 type SavedProfile = {
     userId?: string;
@@ -55,6 +55,25 @@ export default function SessionScreen() {
     const [isMutating, setIsMutating] = useState(false);
     const [error, setError] = useState("");
 
+    const syncTravelerRequest = async (nextSummary: ReservedSessionSummary, travelerUserId?: string) => {
+        if (!travelerUserId) {
+            return;
+        }
+
+        await saveTravelerRequest({
+            requestId: nextSummary.requestId,
+            travelerUserId,
+            status: nextSummary.requestStatus,
+            paymentStatus: nextSummary.paymentStatus,
+            createdAt: nextSummary.startedAt ?? nextSummary.completedAt ?? new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            intent: nextSummary.intent,
+            ...(nextSummary.operator?.userId ? { operatorId: nextSummary.operator.userId } : {}),
+            ...(nextSummary.operator?.displayName ? { operatorDisplayName: nextSummary.operator.displayName } : {}),
+            ...(nextSummary.locationSummary ? { city: nextSummary.locationSummary } : {}),
+        });
+    };
+
     const loadSummary = async () => {
         if (!requestId) {
             setIsLoading(false);
@@ -67,6 +86,7 @@ export default function SessionScreen() {
             setProfile(savedProfile);
             const response = await getReservedSessionSummary(requestId, savedProfile?.userId);
             setSummary(response.summary);
+            await syncTravelerRequest(response.summary, response.summary.traveler.userId);
         } catch (err: any) {
             setError(err.message ?? "Could not load reserved session.");
         } finally {

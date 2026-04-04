@@ -90,9 +90,9 @@ export default function OperatorInboxScreen() {
 
             {!error && requests.length === 0 ? (
                 <View style={{ marginTop: 24 }}>
-                    <Text style={{ fontSize: 22, marginBottom: 8 }}>No active requests</Text>
+                    <Text style={{ fontSize: 22, marginBottom: 8 }}>No incoming requests yet</Text>
                     <Text style={{ color: "#444", marginBottom: 20 }}>
-                        Stay available — new traveler requests will appear here.
+                        Stay available and new traveler requests will appear here.
                     </Text>
                 </View>
             ) : null}
@@ -122,6 +122,9 @@ export default function OperatorInboxScreen() {
                     </Text>
                     <Text style={{ marginBottom: 4 }}>
                         Request status: {request.requestStatus}
+                    </Text>
+                    <Text style={{ marginBottom: 4 }}>
+                        Nomination status: {request.nominationStatus}
                     </Text>
                     <Text style={{ marginBottom: 4 }}>
                         Accepted operators: {request.acceptedOperatorsCount}

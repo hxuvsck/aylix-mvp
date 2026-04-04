@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, Text, View } from "react-native";
+import { getOperatorInbox } from "../../lib/api";
 import { getSavedProfile, resetLocalIdentity, updateSavedProfile } from "../../lib/storage";
 
 type SavedProfile = {
@@ -8,18 +9,24 @@ type SavedProfile = {
     userId?: string;
     isAvailable?: boolean;
     role?: "traveler" | "operator";
+    city?: string;
 };
 
 export default function OperatorHomeScreen() {
     const [profile, setProfile] = useState<SavedProfile | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isAvailable, setIsAvailable] = useState(true);
+    const [incomingCount, setIncomingCount] = useState(0);
 
     useEffect(() => {
         const loadProfile = async () => {
             const savedProfile = await getSavedProfile();
             setProfile(savedProfile);
             setIsAvailable(savedProfile?.isAvailable !== false);
+            if (savedProfile?.userId) {
+                const response = await getOperatorInbox(savedProfile.userId).catch(() => ({ requests: [] }));
+                setIncomingCount(response.requests.length);
+            }
             setIsLoading(false);
         };
 
@@ -58,6 +65,20 @@ export default function OperatorHomeScreen() {
                     : "Create a profile when needed, then use the operator flow."}
             </Text>
 
+            {profile?.displayName ? (
+                <View style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 20 }}>
+                    <Text style={{ marginBottom: 4 }}>Hello, {profile.displayName}</Text>
+                    <Text style={{ marginBottom: 4 }}>City: {profile.city || "Not set"}</Text>
+                    <Text>Availability: {isAvailable ? "Available" : "Not Available"}</Text>
+                </View>
+            ) : null}
+
+            <View style={{ borderWidth: 1, borderColor: "#ddd", padding: 12, marginBottom: 20 }}>
+                <Text style={{ fontSize: 16, marginBottom: 8 }}>Operator Summary</Text>
+                <Text style={{ marginBottom: 4 }}>Incoming requests: {incomingCount}</Text>
+                <Text>Current availability: {isAvailable ? "Available" : "Not Available"}</Text>
+            </View>
+
             {!profile?.userId ? (
                 <View style={{ marginBottom: 12 }}>
                     <Button title="Create Profile" onPress={() => router.push("/onboarding")} />
@@ -76,6 +97,10 @@ export default function OperatorHomeScreen() {
                     title={isAvailable ? "Set Not Available" : "Set Available"}
                     onPress={() => void handleToggleAvailability()}
                 />
+            </View>
+
+            <View style={{ marginBottom: 12 }}>
+                <Button title="Profile" onPress={() => router.push("/profile")} />
             </View>
 
             <Button title="Start Over" onPress={() => void handleStartOver()} />

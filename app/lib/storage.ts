@@ -4,6 +4,7 @@ const PROFILE_STORAGE_KEY = "aylix_profile";
 const LATEST_REVIEW_STORAGE_KEY = "aylix_latest_review";
 const TRUST_STORAGE_KEY = "aylix_trust";
 const SELECTED_ROLE_STORAGE_KEY = "aylix_selected_role";
+const TRAVELER_REQUESTS_STORAGE_KEY = "aylix_traveler_requests";
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -27,6 +28,35 @@ export type UserTrust = {
 };
 
 export type SelectedAppRole = "traveler" | "operator";
+
+export type SavedProfile = {
+  userId: string;
+  displayName: string;
+  role: SelectedAppRole;
+  city: string;
+  roles: string[];
+  capabilities: string[];
+  personality: string[];
+  languages: string[];
+  interests: string[];
+  vibeTags: string[];
+  travelStyle: string[];
+  helpTopics: string[];
+  isAvailable: boolean;
+};
+
+export type SavedTravelerRequest = {
+  requestId: string;
+  travelerUserId: string;
+  status: string;
+  paymentStatus?: string;
+  createdAt: string;
+  updatedAt: string;
+  intent?: string;
+  operatorId?: string;
+  operatorDisplayName?: string;
+  city?: string;
+};
 
 function getTrimmedString(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -67,7 +97,7 @@ function isOperatorProfileComplete(profile: {
   );
 }
 
-function sanitizeProfile(profile: unknown) {
+function sanitizeProfile(profile: unknown): SavedProfile | null {
   if (!profile || typeof profile !== "object") {
     return null;
   }
@@ -101,7 +131,7 @@ function sanitizeProfile(profile: unknown) {
     ...rawProfile,
     userId,
     displayName,
-    role,
+    role: role as SelectedAppRole,
     city,
     roles,
     capabilities,
@@ -151,6 +181,41 @@ function sanitizeReview(review: unknown) {
     helpfulText,
     submittedAt,
   } satisfies LatestReview;
+}
+
+function sanitizeTravelerRequest(request: unknown) {
+  if (!request || typeof request !== "object") {
+    return null;
+  }
+
+  const rawRequest = request as Record<string, unknown>;
+  const requestId = getTrimmedString(rawRequest.requestId);
+  const travelerUserId = getTrimmedString(rawRequest.travelerUserId);
+  const status = getTrimmedString(rawRequest.status);
+  const paymentStatus = getTrimmedString(rawRequest.paymentStatus);
+  const createdAt = getTrimmedString(rawRequest.createdAt);
+  const updatedAt = getTrimmedString(rawRequest.updatedAt);
+  const intent = getTrimmedString(rawRequest.intent);
+  const operatorId = getTrimmedString(rawRequest.operatorId);
+  const operatorDisplayName = getTrimmedString(rawRequest.operatorDisplayName);
+  const city = getTrimmedString(rawRequest.city);
+
+  if (!requestId || !travelerUserId || !status || !createdAt || !updatedAt) {
+    return null;
+  }
+
+  return {
+    requestId,
+    travelerUserId,
+    status,
+    ...(paymentStatus ? { paymentStatus } : {}),
+    createdAt,
+    updatedAt,
+    ...(intent ? { intent } : {}),
+    ...(operatorId ? { operatorId } : {}),
+    ...(operatorDisplayName ? { operatorDisplayName } : {}),
+    ...(city ? { city } : {}),
+  } satisfies SavedTravelerRequest;
 }
 
 export async function saveProfile(profile: unknown) {
@@ -226,6 +291,7 @@ export async function clearSelectedRole() {
 export async function resetLocalIdentity() {
   await clearSavedProfile();
   await clearSelectedRole();
+  await AsyncStorage.removeItem(TRAVELER_REQUESTS_STORAGE_KEY);
 }
 
 export async function saveLatestReview(review: LatestReview) {
@@ -266,8 +332,37 @@ async function getSavedTrustMap() {
   return raw ? (JSON.parse(raw) as Record<string, UserTrust>) : {};
 }
 
+async function getSavedTravelerRequestsMap() {
+  const raw = await AsyncStorage.getItem(TRAVELER_REQUESTS_STORAGE_KEY);
+
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+
+    return Object.entries(parsed).reduce<Record<string, SavedTravelerRequest>>((acc, [key, value]) => {
+      const sanitizedRequest = sanitizeTravelerRequest(value);
+
+      if (sanitizedRequest) {
+        acc[key] = sanitizedRequest;
+      }
+
+      return acc;
+    }, {});
+  } catch {
+    await AsyncStorage.removeItem(TRAVELER_REQUESTS_STORAGE_KEY);
+    return {};
+  }
+}
+
 async function saveTrustMap(trustMap: Record<string, UserTrust>) {
   await AsyncStorage.setItem(TRUST_STORAGE_KEY, JSON.stringify(trustMap));
+}
+
+async function saveTravelerRequestsMap(requestMap: Record<string, SavedTravelerRequest>) {
+  await AsyncStorage.setItem(TRAVELER_REQUESTS_STORAGE_KEY, JSON.stringify(requestMap));
 }
 
 export async function getUserTrust(userId?: string) {
@@ -305,4 +400,30 @@ export async function updateUserTrust(userId: string, rating: number) {
   await saveTrustMap(trustMap);
 
   return updatedTrust;
+}
+
+export async function saveTravelerRequest(request: SavedTravelerRequest) {
+  const sanitizedRequest = sanitizeTravelerRequest(request);
+
+  if (!sanitizedRequest) {
+    throw new Error("Traveler request is invalid and could not be saved locally.");
+  }
+
+  const requestMap = await getSavedTravelerRequestsMap();
+  const existingRequest = requestMap[sanitizedRequest.requestId];
+  requestMap[sanitizedRequest.requestId] = {
+    ...sanitizedRequest,
+    createdAt: existingRequest?.createdAt ?? sanitizedRequest.createdAt,
+  };
+  await saveTravelerRequestsMap(requestMap);
+
+  return requestMap[sanitizedRequest.requestId];
+}
+
+export async function getSavedTravelerRequests(travelerUserId?: string) {
+  const requestMap = await getSavedTravelerRequestsMap();
+
+  return Object.values(requestMap)
+    .filter((request) => !travelerUserId || request.travelerUserId === travelerUserId)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }

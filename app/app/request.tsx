@@ -24,6 +24,7 @@ import {
     DEFAULT_TRUST_SCORE,
     getSavedProfile,
     getUserTrust,
+    saveTravelerRequest,
 } from "../lib/storage";
 
 type SavedProfile = {
@@ -79,6 +80,25 @@ export default function RequestScreen() {
             })
         );
 
+    const syncTravelerRequest = async (request: HelpRequest, operator?: { operatorId?: string; displayName?: string; city?: string } | null) => {
+        if (!profile?.userId) {
+            return;
+        }
+
+        await saveTravelerRequest({
+            requestId: request.id,
+            travelerUserId: profile.userId,
+            status: request.status,
+            paymentStatus: request.paymentStatus,
+            createdAt: request.createdAt,
+            updatedAt: new Date().toISOString(),
+            intent: request.intent,
+            ...(operator?.operatorId ? { operatorId: operator.operatorId } : {}),
+            ...(operator?.displayName ? { operatorDisplayName: operator.displayName } : {}),
+            ...(operator?.city ? { city: operator.city } : {}),
+        });
+    };
+
     const loadRequestView = async (requestId: string, userId?: string) => {
         setIsLoadingResponses(true);
         setResponsesError("");
@@ -107,6 +127,7 @@ export default function RequestScreen() {
             setDeclinedOperators(
                 hydratedResponses.filter((response) => response.nominationStatus === "declined")
             );
+            await syncTravelerRequest(requestStateResponse.request, selectedResponse);
         } catch (err: any) {
             setResponsesError(err.message ?? "Could not load operator responses.");
         } finally {
@@ -165,6 +186,7 @@ export default function RequestScreen() {
             setAcceptedOperators([]);
             setPendingOperators([]);
             setDeclinedOperators([]);
+            await syncTravelerRequest(response.request);
 
             await loadRequestView(response.request.id, profile.userId);
         } catch (err: any) {
@@ -185,6 +207,7 @@ export default function RequestScreen() {
             const response = await expandRequest(activeRequest.id);
             setActiveRequest(response.request);
             setNominations(response.nominations);
+            await syncTravelerRequest(response.request);
             await loadRequestView(response.request.id, profile?.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not expand search.");
@@ -205,6 +228,7 @@ export default function RequestScreen() {
             setHasRequested(true);
             setActiveRequest(response.request);
             setNominations(response.nominations);
+            await syncTravelerRequest(response.request);
             await loadRequestView(response.request.id, profile.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not retry request.");
@@ -227,6 +251,7 @@ export default function RequestScreen() {
             });
             setActiveRequest(reserveResponse.request);
             setNominations(reserveResponse.nominations);
+            await syncTravelerRequest(reserveResponse.request, response);
             await loadRequestView(reserveResponse.request.id, profile.userId);
         } catch (err: any) {
             setResponsesError(err.message ?? "Could not select this operator.");
@@ -271,6 +296,7 @@ export default function RequestScreen() {
             const response = await cancelRequest(activeRequest.id);
             setActiveRequest(response.request);
             setNominations(response.nominations);
+            await syncTravelerRequest(response.request, selectedOperator);
             await loadRequestView(response.request.id, profile?.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not cancel request.");
@@ -289,6 +315,7 @@ export default function RequestScreen() {
             const response = await reportNoShow(activeRequest.id, selectedOperator.operatorId);
             setActiveRequest(response.request);
             setNominations(response.nominations);
+            await syncTravelerRequest(response.request, selectedOperator);
             await loadRequestView(response.request.id, profile?.userId);
         } catch (err: any) {
             setMatchesError(err.message ?? "Could not report no-show.");
