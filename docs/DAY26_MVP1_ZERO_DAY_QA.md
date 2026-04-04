@@ -17,6 +17,19 @@
 - [ ] Rapid double tap on profile create does not create duplicate users or profiles
 - [ ] Invalid saved profile data is cleared instead of breaking profile-dependent screens
 
+## Profile Completeness
+- [ ] `displayName` is required for every profile
+- [ ] `city` is required for every profile
+- [ ] Whitespace-only `displayName` is rejected
+- [ ] Whitespace-only `city` is rejected
+- [ ] Empty array values do not count toward completeness
+- [ ] Helper/operator-intent profile requires at least one role
+- [ ] Helper/operator-intent profile requires at least one capability
+- [ ] Helper/operator-intent profile requires at least one language
+- [ ] Backend rejects bypassed incomplete profile payloads
+- [ ] Incomplete saved local profile is cleared instead of reused
+- [ ] Incomplete operator profile cannot participate in matching
+
 ## Request Flow Validation
 - [ ] Request creation rejects invalid traveler `userId`
 - [ ] Request creation rejects duplicate active request creation for the same traveler

@@ -1,8 +1,73 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { Button, ScrollView, Text, TextInput, View } from "react-native";
+import { Button, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { capabilitiesOptions, createProfile, createUser, personalityOptions, roleOptions } from "../lib/api";
 import { saveProfile } from "../lib/storage";
+
+const languageOptions = [
+    "English",
+    "Mongolian",
+    "Korean",
+    "Japanese",
+    "Chinese",
+    "Russian",
+    "German",
+    "French",
+    "Spanish",
+    "Turkish",
+] as const;
+
+const travelStyleOptions = [
+    "Budget",
+    "Standard",
+    "Luxury",
+    "Adventure",
+    "Cultural",
+    "Food & Dining",
+    "Nightlife",
+    "Nature",
+    "Relaxation",
+    "Business",
+] as const;
+
+const interestOptions = [
+    "Food",
+    "Culture",
+    "History",
+    "Nature",
+    "Shopping",
+    "Nightlife",
+    "Photography",
+    "Events",
+    "Wellness",
+    "Local Living",
+] as const;
+
+const vibeOptions = [
+    "Calm",
+    "Friendly",
+    "Energetic",
+    "Professional",
+    "Adventurous",
+    "Luxury",
+    "Social",
+    "Flexible",
+] as const;
+
+const helpTopicOptions = [
+    "City Navigation",
+    "Local Recommendations",
+    "Food & Restaurants",
+    "Nightlife",
+    "Culture & History",
+    "Shopping",
+    "Translation Help",
+    "Emergency Help",
+    "Transport Guidance",
+    "Trip Planning",
+    "Visa & Documents",
+    "Business Assistance",
+] as const;
 
 export default function OnboardingScreen() {
     const [name, setName] = useState("");
@@ -11,20 +76,13 @@ export default function OnboardingScreen() {
     const [roles, setRoles] = useState<(typeof roleOptions)[number][]>([]);
     const [capabilities, setCapabilities] = useState<string[]>([]);
     const [personality, setPersonality] = useState<string[]>([]);
-    const [languages, setLanguages] = useState("");
-    const [interests, setInterests] = useState("");
-    const [vibe, setVibe] = useState("");
-    const [travelStyle, setTravelStyle] = useState("");
-    const [helpTopics, setHelpTopics] = useState("");
+    const [languages, setLanguages] = useState<string[]>([]);
+    const [interests, setInterests] = useState<string[]>([]);
+    const [vibe, setVibe] = useState<string[]>([]);
+    const [travelStyle, setTravelStyle] = useState<string[]>([]);
+    const [helpTopics, setHelpTopics] = useState<string[]>([]);
     const [result, setResult] = useState("Ready");
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    function splitCommaSeparatedValues(value: string) {
-        return value
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean);
-    }
 
     function toggleSelection<T extends string>(value: T, selected: T[], setSelected: (next: T[]) => void) {
         setSelected(
@@ -32,16 +90,66 @@ export default function OnboardingScreen() {
         );
     }
 
+    const trimmedName = name.trim();
+    const trimmedCity = city.trim();
+    const operatorIntent = roles.length > 0 || capabilities.length > 0 || languages.length > 0;
+    const validationMessage = !trimmedName
+        ? "Display name is required"
+        : !trimmedCity
+          ? "City is required"
+          : operatorIntent && roles.length === 0
+            ? "Select at least one role"
+            : operatorIntent && capabilities.length === 0
+              ? "Add at least one capability"
+              : operatorIntent && languages.length === 0
+                ? "Add at least one language"
+                : "";
+
+    const renderSelectableGroup = (
+        label: string,
+        options: readonly string[],
+        selected: string[],
+        setSelected: (next: string[]) => void
+    ) => (
+        <View style={{ marginBottom: 14 }}>
+            <Text style={{ marginBottom: 8 }}>{label}</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                {options.map((option) => {
+                    const isSelected = selected.includes(option);
+
+                    return (
+                        <Pressable
+                            key={option}
+                            onPress={() => toggleSelection(option, selected, setSelected)}
+                            style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 8,
+                                borderWidth: 1,
+                                borderColor: isSelected ? "#0a7ea4" : "#bbb",
+                                backgroundColor: isSelected ? "#e7f6fb" : "#fff",
+                                borderRadius: 999,
+                                marginRight: 8,
+                                marginBottom: 8,
+                            }}
+                        >
+                            <Text style={{ color: isSelected ? "#0a7ea4" : "#222" }}>{option}</Text>
+                        </Pressable>
+                    );
+                })}
+            </View>
+            <Text style={{ color: "#444" }}>
+                Selected: {selected.length > 0 ? selected.join(", ") : "None"}
+            </Text>
+        </View>
+    );
+
     const handleCreate = async () => {
         if (isSubmitting) {
             return;
         }
 
-        const trimmedName = name.trim();
-        const trimmedCity = city.trim();
-
-        if (!trimmedName) {
-            setResult("ERROR: Name is required.");
+        if (validationMessage) {
+            setResult(`ERROR: ${validationMessage}`);
             return;
         }
 
@@ -61,11 +169,11 @@ export default function OnboardingScreen() {
                 capabilities,
                 personality,
                 ...(trimmedCity ? { city: trimmedCity } : {}),
-                languages: splitCommaSeparatedValues(languages),
-                interests: splitCommaSeparatedValues(interests),
-                vibeTags: splitCommaSeparatedValues(vibe),
-                travelStyle: splitCommaSeparatedValues(travelStyle),
-                helpTopics: splitCommaSeparatedValues(helpTopics),
+                languages,
+                interests,
+                vibeTags: vibe,
+                travelStyle,
+                helpTopics,
             });
 
             await saveProfile(profile);
@@ -105,6 +213,10 @@ export default function OnboardingScreen() {
                 <Text style={{ fontSize: 28, marginBottom: 8 }}>Meet your Aylix profile</Text>
                 <Text style={{ fontSize: 16, marginBottom: 20, color: "#444" }}>
                     Tell us how you travel and how you like to help so your profile feels match-ready.
+                </Text>
+                <Text style={{ marginBottom: 16, color: "#444" }}>
+                    Every profile needs a display name and city. To appear as a helper, add at least one role,
+                    one capability, and one language.
                 </Text>
 
                 <TextInput
@@ -167,47 +279,21 @@ export default function OnboardingScreen() {
                     ))}
                 </View>
 
-                <TextInput
-                    placeholder="Languages (comma separated)"
-                    value={languages}
-                    onChangeText={setLanguages}
-                    style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
-                />
-
-                <TextInput
-                    placeholder="Interests (comma separated)"
-                    value={interests}
-                    onChangeText={setInterests}
-                    style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
-                />
-
-                <TextInput
-                    placeholder="Vibe (comma separated)"
-                    value={vibe}
-                    onChangeText={setVibe}
-                    style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
-                />
-
-                <TextInput
-                    placeholder="Travel style (comma separated)"
-                    value={travelStyle}
-                    onChangeText={setTravelStyle}
-                    style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
-                />
-
-                <TextInput
-                    placeholder="Help topics (comma separated)"
-                    value={helpTopics}
-                    onChangeText={setHelpTopics}
-                    style={{ borderWidth: 1, marginBottom: 16, padding: 10 }}
-                />
+                {renderSelectableGroup("Languages", languageOptions, languages, setLanguages)}
+                {renderSelectableGroup("Interests", interestOptions, interests, setInterests)}
+                {renderSelectableGroup("Vibe", vibeOptions, vibe, setVibe)}
+                {renderSelectableGroup("Travel style", travelStyleOptions, travelStyle, setTravelStyle)}
+                {renderSelectableGroup("Help topics", helpTopicOptions, helpTopics, setHelpTopics)}
 
                 <Button
                     title={isSubmitting ? "Creating your profile..." : "Create Aylix Profile"}
                     onPress={handleCreate}
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || Boolean(validationMessage)}
                 />
 
+                {validationMessage && !isSubmitting ? (
+                    <Text style={{ marginTop: 12, color: "#444" }}>{validationMessage}</Text>
+                ) : null}
                 <Text style={{ marginTop: 20 }}>{result}</Text>
             </View>
         </ScrollView>

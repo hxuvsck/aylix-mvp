@@ -286,6 +286,8 @@ const seedProfiles = [
     profile: {
       displayName: "Khuslen",
       city: "Ulaanbaatar",
+      roles: ["local", "guide"],
+      capabilities: ["food", "explore"],
       languages: ["en", "mn"],
       interests: ["food", "culture", "walking"],
       vibeTags: ["calm", "curious"],
@@ -298,6 +300,8 @@ const seedProfiles = [
     profile: {
       displayName: "Saraa",
       city: "Ulaanbaatar",
+      roles: ["local", "guide"],
+      capabilities: ["food", "explore"],
       languages: ["en", "mn"],
       interests: ["food", "culture"],
       vibeTags: ["calm", "curious"],
@@ -310,6 +314,8 @@ const seedProfiles = [
     profile: {
       displayName: "Temuulen",
       city: "Ulaanbaatar",
+      roles: ["companion", "local"],
+      capabilities: ["food", "explore"],
       languages: ["en"],
       interests: ["food", "nightlife"],
       vibeTags: ["curious", "social"],
@@ -322,6 +328,8 @@ const seedProfiles = [
     profile: {
       displayName: "Nomin",
       city: "Ulaanbaatar",
+      roles: ["local", "expert"],
+      capabilities: ["navigation", "emergency"],
       languages: ["mn"],
       interests: ["culture", "shopping"],
       vibeTags: ["calm"],
@@ -334,6 +342,8 @@ const seedProfiles = [
     profile: {
       displayName: "Bat",
       city: "Darkhan",
+      roles: ["local"],
+      capabilities: ["navigation"],
       languages: ["mn"],
       interests: ["business"],
       vibeTags: ["fast-paced"],
@@ -346,6 +356,8 @@ const seedProfiles = [
     profile: {
       displayName: "Oya",
       city: "Seoul",
+      roles: ["expert"],
+      capabilities: ["translation"],
       languages: ["kr"],
       interests: ["luxury"],
       vibeTags: ["energetic"],
@@ -439,6 +451,53 @@ function hasActiveRequest(userId: string) {
   return helpRequests.some(
     (request) => request.userId === userId && !isTerminalRequestStatus(request.status)
   );
+}
+
+function hasOperatorIntent(profile: {
+  roles?: Role[] | undefined;
+  capabilities?: string[] | undefined;
+  languages?: string[] | undefined;
+}) {
+  return (
+    (profile.roles?.length ?? 0) > 0 ||
+    (profile.capabilities?.length ?? 0) > 0 ||
+    (profile.languages?.length ?? 0) > 0
+  );
+}
+
+function isProfileCoreComplete(profile: {
+  displayName?: string;
+  city?: string;
+}) {
+  return isNonEmptyString(profile.displayName ?? "") && isNonEmptyString(profile.city ?? "");
+}
+
+function isOperatorProfileComplete(profile: {
+  roles?: Role[] | undefined;
+  capabilities?: string[] | undefined;
+  languages?: string[] | undefined;
+}) {
+  return (
+    (profile.roles?.length ?? 0) > 0 &&
+    (profile.capabilities?.length ?? 0) > 0 &&
+    (profile.languages?.length ?? 0) > 0
+  );
+}
+
+function isProfileCompleteForParticipation(profile: Profile) {
+  if (!isProfileCoreComplete(profile)) {
+    return false;
+  }
+
+  if (!hasOperatorIntent(profile)) {
+    return true;
+  }
+
+  return isOperatorProfileComplete(profile);
+}
+
+function canParticipateAsOperator(profile: Profile) {
+  return profile.isAvailable !== false && isProfileCoreComplete(profile) && isOperatorProfileComplete(profile);
 }
 
 function getOverlapCount(valuesA?: string[], valuesB?: string[]) {
@@ -623,7 +682,7 @@ function getRankedOperatorsForRequest(
   return profiles
     .filter(
       (profile) =>
-        !excludedIds.has(profile.userId) && profile.isAvailable !== false
+        !excludedIds.has(profile.userId) && canParticipateAsOperator(profile)
     )
     .map((profile) => getRequestMatchResult(request, profile))
     .sort((a, b) => b.score - a.score);
@@ -1125,8 +1184,33 @@ function sanitizeInMemoryState() {
       !isValidId(profile.id) ||
       !isValidId(profile.userId) ||
       !isNonEmptyString(profile.displayName) ||
+      !isNonEmptyString(profile.city ?? "") ||
       !validUsers.has(profile.userId)
     ) {
+      return;
+    }
+
+    const sanitizedProfile: Profile = {
+      ...profile,
+      displayName: profile.displayName.trim(),
+      city: profile.city!.trim(),
+      ...(profile.bio && isNonEmptyString(profile.bio)
+        ? { bio: profile.bio.trim() }
+        : {}),
+      ...(profile.countryCode && isNonEmptyString(profile.countryCode)
+        ? { countryCode: profile.countryCode.trim() }
+        : {}),
+      ...(profile.roles ? { roles: profile.roles } : {}),
+      ...(profile.capabilities ? { capabilities: profile.capabilities } : {}),
+      ...(profile.personality ? { personality: profile.personality } : {}),
+      ...(profile.languages ? { languages: profile.languages } : {}),
+      ...(profile.interests ? { interests: profile.interests } : {}),
+      ...(profile.vibeTags ? { vibeTags: profile.vibeTags } : {}),
+      ...(profile.travelStyle ? { travelStyle: profile.travelStyle } : {}),
+      ...(profile.helpTopics ? { helpTopics: profile.helpTopics } : {}),
+    };
+
+    if (!isProfileCompleteForParticipation(sanitizedProfile)) {
       return;
     }
 
@@ -1134,19 +1218,7 @@ function sanitizeInMemoryState() {
       return;
     }
 
-    validProfiles.set(profile.userId, {
-      ...profile,
-      displayName: profile.displayName.trim(),
-      ...(profile.city && isNonEmptyString(profile.city)
-        ? { city: profile.city.trim() }
-        : {}),
-      ...(profile.bio && isNonEmptyString(profile.bio)
-        ? { bio: profile.bio.trim() }
-        : {}),
-      ...(profile.countryCode && isNonEmptyString(profile.countryCode)
-        ? { countryCode: profile.countryCode.trim() }
-        : {}),
-    });
+    validProfiles.set(profile.userId, sanitizedProfile);
   });
   profiles.length = 0;
   profiles.push(...validProfiles.values());
@@ -1347,6 +1419,10 @@ app.post("/profiles", (req, res) => {
     return res.status(400).json({ error: "displayName is required" });
   }
 
+  if (!trimmedCity) {
+    return res.status(400).json({ error: "city is required" });
+  }
+
   if (!getValidUserById(userId)) {
     return res.status(404).json({ error: "User not found" });
   }
@@ -1393,6 +1469,24 @@ app.post("/profiles", (req, res) => {
 
   if (helpTopics === null) {
     return res.status(400).json({ error: "helpTopics must be an array" });
+  }
+
+  const operatorIntent = hasOperatorIntent({
+    roles,
+    capabilities,
+    languages,
+  });
+
+  if (operatorIntent && (!roles || roles.length === 0)) {
+    return res.status(400).json({ error: "Select at least one role" });
+  }
+
+  if (operatorIntent && (!capabilities || capabilities.length === 0)) {
+    return res.status(400).json({ error: "Add at least one capability" });
+  }
+
+  if (operatorIntent && (!languages || languages.length === 0)) {
+    return res.status(400).json({ error: "Add at least one language" });
   }
 
   const profile: Profile = {
@@ -2150,6 +2244,10 @@ app.get("/operator/requests", (req, res) => {
     return res.status(404).json({ error: "Operator profile not found" });
   }
 
+  if (!canParticipateAsOperator(operatorProfile)) {
+    return res.status(400).json({ error: "Operator profile is incomplete for inbox participation" });
+  }
+
   res.json({
     requests: getOperatorInboxItems(operatorId),
   });
@@ -2171,7 +2269,7 @@ app.get("/match/:userId", (req, res) => {
   const matches: MatchResult[] = profiles
     .filter(
       (profile) =>
-        profile.userId !== currentProfile.userId && profile.isAvailable !== false
+        profile.userId !== currentProfile.userId && canParticipateAsOperator(profile)
     )
     .map((profile) => {
       const score = getMatchScore(currentProfile, profile);

@@ -40,6 +40,30 @@ function getStringArray(value: unknown) {
     .filter(Boolean);
 }
 
+function hasOperatorIntent(profile: {
+  roles?: string[];
+  capabilities?: string[];
+  languages?: string[];
+}) {
+  return (
+    (profile.roles?.length ?? 0) > 0 ||
+    (profile.capabilities?.length ?? 0) > 0 ||
+    (profile.languages?.length ?? 0) > 0
+  );
+}
+
+function isOperatorProfileComplete(profile: {
+  roles?: string[];
+  capabilities?: string[];
+  languages?: string[];
+}) {
+  return (
+    (profile.roles?.length ?? 0) > 0 &&
+    (profile.capabilities?.length ?? 0) > 0 &&
+    (profile.languages?.length ?? 0) > 0
+  );
+}
+
 function sanitizeProfile(profile: unknown) {
   if (!profile || typeof profile !== "object") {
     return null;
@@ -48,20 +72,29 @@ function sanitizeProfile(profile: unknown) {
   const rawProfile = profile as Record<string, unknown>;
   const userId = getTrimmedString(rawProfile.userId);
   const displayName = getTrimmedString(rawProfile.displayName);
+  const city = getTrimmedString(rawProfile.city);
+  const roles = getStringArray(rawProfile.roles);
+  const capabilities = getStringArray(rawProfile.capabilities);
+  const languages = getStringArray(rawProfile.languages);
 
-  if (!uuidPattern.test(userId) || !displayName) {
+  if (!uuidPattern.test(userId) || !displayName || !city) {
     return null;
   }
 
-  const city = getTrimmedString(rawProfile.city);
+  if (
+    hasOperatorIntent({ roles, capabilities, languages }) &&
+    !isOperatorProfileComplete({ roles, capabilities, languages })
+  ) {
+    return null;
+  }
 
   return {
     ...rawProfile,
     userId,
     displayName,
-    ...(city ? { city } : {}),
-    roles: getStringArray(rawProfile.roles),
-    capabilities: getStringArray(rawProfile.capabilities),
+    city,
+    roles,
+    capabilities,
     personality: getStringArray(rawProfile.personality),
     languages: getStringArray(rawProfile.languages),
     interests: getStringArray(rawProfile.interests),
