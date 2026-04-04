@@ -1,6 +1,7 @@
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
 
+export const onboardingRoleOptions = ["traveler", "operator"] as const;
 export const roleOptions = ["guide", "local", "expert", "companion"] as const;
 export const helpIntentOptions = ["food", "navigation", "translation", "explore", "emergency"] as const;
 export const urgencyOptions = ["low", "medium", "high"] as const;
@@ -22,6 +23,7 @@ export const paymentStatusOptions = ["none", "quoted", "reserved", "paid", "refu
 export const payoutStatusOptions = ["pending", "available", "paid"] as const;
 
 export type Role = (typeof roleOptions)[number];
+export type OnboardingRole = (typeof onboardingRoleOptions)[number];
 export type HelpIntent = (typeof helpIntentOptions)[number];
 export type Urgency = (typeof urgencyOptions)[number];
 export type HelpRequestStatus = (typeof helpRequestStatusOptions)[number];
@@ -45,11 +47,16 @@ type CreateUserResponse = {
 type CreateProfileInput = {
   userId: string;
   displayName: string;
+  role?: OnboardingRole;
   isAvailable?: boolean;
   roles?: Role[];
   capabilities?: string[];
   personality?: string[];
   trustScore?: number;
+  hasExperience?: boolean;
+  experienceNote?: string;
+  responseSample?: string;
+  availabilitySlots?: string[];
   city?: string;
   languages?: string[];
   interests?: string[];
@@ -62,11 +69,16 @@ type CreateProfileResponse = {
   id: string;
   userId: string;
   displayName: string;
+  role?: OnboardingRole;
   isAvailable?: boolean;
   roles?: Role[];
   capabilities?: string[];
   personality?: string[];
   trustScore?: number;
+  hasExperience?: boolean;
+  experienceNote?: string;
+  responseSample?: string;
+  availabilitySlots?: string[];
   city?: string;
   languages?: string[];
   interests?: string[];

@@ -17,6 +17,10 @@ type ProfileData = {
     capabilities?: string[];
     personality?: string[];
     trustScore?: number;
+    hasExperience?: boolean;
+    experienceNote?: string;
+    responseSample?: string;
+    availabilitySlots?: string[];
     city?: string;
     languages?: string[];
     interests?: string[];
@@ -87,6 +91,11 @@ export default function ProfileScreen() {
         capabilities?: string | string[];
         personality?: string | string[];
         trustScore?: string | string[];
+        role?: string | string[];
+        hasExperience?: string | string[];
+        experienceNote?: string | string[];
+        responseSample?: string | string[];
+        availabilitySlots?: string | string[];
         city?: string | string[];
         languages?: string | string[];
         interests?: string | string[];
@@ -109,6 +118,11 @@ export default function ProfileScreen() {
                 capabilities: rawCapabilities,
                 personality: rawPersonality,
                 trustScore: rawTrustScore,
+                role: rawRole,
+                hasExperience: rawHasExperience,
+                experienceNote: rawExperienceNote,
+                responseSample: rawResponseSample,
+                availabilitySlots: rawAvailabilitySlots,
                 city: rawCity,
                 languages: rawLanguages,
                 interests: rawInterests,
@@ -124,6 +138,11 @@ export default function ProfileScreen() {
             const capabilities = safeParseArray(getSingleParam(rawCapabilities));
             const personality = safeParseArray(getSingleParam(rawPersonality));
             const trustScore = getNumberParam(rawTrustScore);
+            const role = getSingleParam(rawRole);
+            const hasExperience = getBooleanParam(rawHasExperience);
+            const experienceNote = getSingleParam(rawExperienceNote);
+            const responseSample = getSingleParam(rawResponseSample);
+            const availabilitySlots = getSingleParam(rawAvailabilitySlots);
             const city = getSingleParam(rawCity);
             const languages = getSingleParam(rawLanguages);
             const interests = getSingleParam(rawInterests);
@@ -136,11 +155,16 @@ export default function ProfileScreen() {
                     normalizeProfile({
                         userId,
                         displayName,
+                        role: role === "operator" || role === "traveler" ? role : undefined,
                         isAvailable,
                         roles,
                         capabilities,
                         personality,
                         trustScore,
+                        hasExperience,
+                        experienceNote,
+                        responseSample,
+                        availabilitySlots: safeParseArray(availabilitySlots),
                         city,
                         languages: safeParseArray(languages),
                         interests: safeParseArray(interests),
@@ -202,9 +226,23 @@ const handleReset = async () => {
                 <Text style={{ marginBottom: 8 }}>Role: {profile.role}</Text>
                 <Text style={{ marginBottom: 8 }}>City: {profile.city}</Text>
                 {profile.role === "operator" ? (
-                    <Text style={{ marginBottom: 8 }}>
-                        Availability: {profile.isAvailable === false ? "Not available" : "Available to help"}
-                    </Text>
+                    <>
+                        <Text style={{ marginBottom: 8 }}>
+                            Availability: {profile.isAvailable === false ? "Not available" : "Available to help"}
+                        </Text>
+                        <Text style={{ marginBottom: 8 }}>
+                            Experience: {profile.hasExperience ? "Has prior experience" : "No prior experience noted"}
+                        </Text>
+                        <Text style={{ marginBottom: 8 }}>
+                            Availability slots: {(profile.availabilitySlots ?? []).join(", ") || "Not set"}
+                        </Text>
+                        <Text style={{ marginBottom: 8 }}>
+                            Experience note: {profile.experienceNote || "No experience note added"}
+                        </Text>
+                        <Text style={{ marginBottom: 8 }}>
+                            Response sample: {profile.responseSample || "No response sample added"}
+                        </Text>
+                    </>
                 ) : null}
                 <Text style={{ marginBottom: 8 }}>User ID: {profile.userId}</Text>
                 <Text style={{ marginBottom: 8 }}>Roles: {(profile.roles ?? []).join(", ") || "None set"}</Text>

@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Button, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { capabilitiesOptions, createProfile, createUser, personalityOptions, roleOptions } from "../lib/api";
+import { createProfile, createUser, type Role } from "../lib/api";
 import { getSelectedRole, saveProfile, type SelectedAppRole } from "../lib/storage";
 
 const languageOptions = [
@@ -54,21 +54,6 @@ const vibeOptions = [
     "Flexible",
 ] as const;
 
-const helpTopicOptions = [
-    "City Navigation",
-    "Local Recommendations",
-    "Food & Restaurants",
-    "Nightlife",
-    "Culture & History",
-    "Shopping",
-    "Translation Help",
-    "Emergency Help",
-    "Transport Guidance",
-    "Trip Planning",
-    "Visa & Documents",
-    "Business Assistance",
-] as const;
-
 const cityOptions = [
     "Ulaanbaatar",
     "Seoul",
@@ -81,20 +66,44 @@ const cityOptions = [
     "Bali",
 ] as const;
 
+const operatorRoleOptions = [
+    { value: "guide", label: "Local Guide" },
+    { value: "local", label: "Helper" },
+    { value: "expert", label: "Concierge" },
+] as const;
+
+const operatorCapabilityOptions = [
+    { value: "navigation", label: "Getting Around" },
+    { value: "food", label: "Food & Places" },
+    { value: "explore", label: "Booking Help" },
+    { value: "translation", label: "Language Help" },
+    { value: "emergency", label: "Emergency Support" },
+] as const;
+
+const availabilitySlotOptions = [
+    "morning",
+    "afternoon",
+    "evening",
+    "night",
+    "anytime",
+] as const;
+
 export default function OnboardingScreen() {
     const [selectedRole, setSelectedRole] = useState<SelectedAppRole | null>(null);
     const [isLoadingRole, setIsLoadingRole] = useState(true);
     const [name, setName] = useState("");
     const [city, setCity] = useState("");
     const [isAvailable, setIsAvailable] = useState(true);
-    const [roles, setRoles] = useState<(typeof roleOptions)[number][]>([]);
+    const [roles, setRoles] = useState<Role[]>([]);
     const [capabilities, setCapabilities] = useState<string[]>([]);
-    const [personality, setPersonality] = useState<string[]>([]);
     const [languages, setLanguages] = useState<string[]>([]);
     const [interests, setInterests] = useState<string[]>([]);
     const [vibe, setVibe] = useState<string[]>([]);
     const [travelStyle, setTravelStyle] = useState<string[]>([]);
-    const [helpTopics, setHelpTopics] = useState<string[]>([]);
+    const [hasExperience, setHasExperience] = useState(false);
+    const [experienceNote, setExperienceNote] = useState("");
+    const [responseSample, setResponseSample] = useState("");
+    const [availabilitySlots, setAvailabilitySlots] = useState<string[]>([]);
     const [result, setResult] = useState("Ready");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -116,17 +125,21 @@ export default function OnboardingScreen() {
 
     const trimmedName = name.trim();
     const trimmedCity = city.trim();
+    const trimmedExperienceNote = experienceNote.trim();
+    const trimmedResponseSample = responseSample.trim();
     const isOperatorRole = selectedRole === "operator";
     const validationMessage = !trimmedName
         ? "Display name is required"
         : !trimmedCity
           ? "City is required"
+          : isOperatorRole && languages.length === 0
+            ? "Add at least one language"
           : isOperatorRole && roles.length === 0
             ? "Select at least one role"
             : isOperatorRole && capabilities.length === 0
               ? "Add at least one capability"
-              : isOperatorRole && languages.length === 0
-                ? "Add at least one language"
+              : isOperatorRole && !trimmedResponseSample
+                ? "Add a response sample"
                 : "";
 
     const renderSelectableGroup = (
@@ -203,6 +216,49 @@ export default function OnboardingScreen() {
         </View>
     );
 
+    const renderMappedSelectableGroup = <T extends string>(
+        label: string,
+        options: readonly { value: T; label: string }[],
+        selected: T[],
+        setSelected: (next: T[]) => void
+    ) => (
+        <View style={{ marginBottom: 14 }}>
+            <Text style={{ marginBottom: 8 }}>{label}</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                {options.map((option) => {
+                    const isSelected = selected.includes(option.value);
+
+                    return (
+                        <Pressable
+                            key={option.value}
+                            onPress={() => toggleSelection(option.value, selected, setSelected)}
+                            style={{
+                                paddingHorizontal: 12,
+                                paddingVertical: 8,
+                                borderWidth: 1,
+                                borderColor: isSelected ? "#0a7ea4" : "#bbb",
+                                backgroundColor: isSelected ? "#e7f6fb" : "#fff",
+                                borderRadius: 999,
+                                marginRight: 8,
+                                marginBottom: 8,
+                            }}
+                        >
+                            <Text style={{ color: isSelected ? "#0a7ea4" : "#222" }}>{option.label}</Text>
+                        </Pressable>
+                    );
+                })}
+            </View>
+            <Text style={{ color: "#444" }}>
+                Selected: {selected.length > 0
+                    ? options
+                          .filter((option) => selected.includes(option.value))
+                          .map((option) => option.label)
+                          .join(", ")
+                    : "None"}
+            </Text>
+        </View>
+    );
+
     const handleCreate = async () => {
         if (isSubmitting) {
             return;
@@ -233,13 +289,16 @@ export default function OnboardingScreen() {
 
             const profile = await createProfile({
                 ...profilePayload,
+                role: selectedRole ?? undefined,
                 ...(isOperatorRole
                     ? {
                           isAvailable,
                           roles,
                           capabilities,
-                          personality,
-                          helpTopics,
+                          hasExperience,
+                          ...(trimmedExperienceNote ? { experienceNote: trimmedExperienceNote } : {}),
+                          responseSample: trimmedResponseSample,
+                          availabilitySlots,
                       }
                     : {}),
             });
@@ -310,20 +369,23 @@ export default function OnboardingScreen() {
             keyboardShouldPersistTaps="handled"
         >
             <View>
-                <Text style={{ fontSize: 28, marginBottom: 8 }}>Meet your Aylix profile</Text>
+                <Text style={{ fontSize: 28, marginBottom: 8 }}>
+                    {selectedRole === "operator" ? "Operator Onboarding" : "Traveler Onboarding"}
+                </Text>
                 <Text style={{ fontSize: 16, marginBottom: 20, color: "#444" }}>
                     {selectedRole === "operator"
-                        ? "Tell us how you help so your operator profile is ready for the MVP flow."
+                        ? "Create your operator profile so travelers can discover the right kind of help."
                         : "Tell us how you travel so your traveler profile is ready for the MVP flow."}
                 </Text>
                 <Text style={{ marginBottom: 16, color: "#444" }}>
                     {selectedRole === "operator"
-                        ? "Every operator profile needs a display name, city, role, capability, and at least one language."
+                        ? "Every operator profile needs a display name, city, at least one language, one role, one capability, and a short response sample."
                         : "Every traveler profile needs a display name and city."}
                 </Text>
 
+                <Text style={{ fontSize: 18, marginBottom: 12 }}>Basic identity</Text>
                 <TextInput
-                    placeholder="Name"
+                    placeholder="Display name"
                     value={name}
                     onChangeText={setName}
                     style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
@@ -333,64 +395,84 @@ export default function OnboardingScreen() {
 
                 {selectedRole === "operator" ? (
                     <>
+                        <Text style={{ fontSize: 18, marginBottom: 12 }}>Languages</Text>
+                        {renderSelectableGroup("Languages", languageOptions, languages, setLanguages)}
+
+                        <Text style={{ fontSize: 18, marginBottom: 12 }}>How you help</Text>
+                        {renderMappedSelectableGroup("Operator roles", operatorRoleOptions, roles, setRoles)}
+                        {renderMappedSelectableGroup(
+                            "Capabilities",
+                            operatorCapabilityOptions,
+                            capabilities,
+                            setCapabilities
+                        )}
+
+                        <Text style={{ fontSize: 18, marginBottom: 12 }}>Experience</Text>
                         <Text style={{ marginBottom: 8 }}>
-                            Availability: {isAvailable ? "Available to help" : "Not available"}
+                            Experience: {hasExperience ? "I have prior experience helping travelers" : "I am new to helping travelers"}
                         </Text>
-                        <View style={{ marginBottom: 10 }}>
+                        <View style={{ marginBottom: 12 }}>
+                            <Button
+                                title={hasExperience ? "Mark as new to this" : "Mark as experienced"}
+                                onPress={() => setHasExperience((current) => !current)}
+                            />
+                        </View>
+                        <TextInput
+                            placeholder="Optional short note about your experience"
+                            value={experienceNote}
+                            onChangeText={setExperienceNote}
+                            style={{ borderWidth: 1, marginBottom: 14, padding: 10 }}
+                        />
+
+                        <Text style={{ fontSize: 18, marginBottom: 12 }}>Behavior sample</Text>
+                        <Text style={{ marginBottom: 8, color: "#444" }}>
+                            If a traveler is lost at night in your city, what would you do?
+                        </Text>
+                        <TextInput
+                            placeholder="Write a short response"
+                            value={responseSample}
+                            onChangeText={setResponseSample}
+                            multiline
+                            textAlignVertical="top"
+                            style={{ borderWidth: 1, marginBottom: 14, padding: 10, minHeight: 110 }}
+                        />
+
+                        <Text style={{ fontSize: 18, marginBottom: 12 }}>Availability</Text>
+                        <Text style={{ marginBottom: 8 }}>
+                            Status: {isAvailable ? "Available to help" : "Not available right now"}
+                        </Text>
+                        <View style={{ marginBottom: 12 }}>
                             <Button
                                 title={isAvailable ? "Set as not available" : "Set as available"}
                                 onPress={() => setIsAvailable((current) => !current)}
                             />
                         </View>
-
-                        <Text style={{ marginBottom: 8 }}>Roles</Text>
-                        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
-                            {roleOptions.map((role) => (
-                                <View key={role} style={{ marginRight: 8, marginBottom: 8 }}>
-                                    <Button
-                                        title={roles.includes(role) ? `${role} selected` : role}
-                                        onPress={() => toggleSelection(role, roles, setRoles)}
-                                    />
-                                </View>
-                            ))}
-                        </View>
-
-                        <Text style={{ marginBottom: 8 }}>Capabilities</Text>
-                        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
-                            {capabilitiesOptions.map((capability) => (
-                                <View key={capability} style={{ marginRight: 8, marginBottom: 8 }}>
-                                    <Button
-                                        title={capabilities.includes(capability) ? `${capability} selected` : capability}
-                                        onPress={() => toggleSelection(capability, capabilities, setCapabilities)}
-                                    />
-                                </View>
-                            ))}
-                        </View>
-
-                        <Text style={{ marginBottom: 8 }}>Personality</Text>
-                        <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
-                            {personalityOptions.map((trait) => (
-                                <View key={trait} style={{ marginRight: 8, marginBottom: 8 }}>
-                                    <Button
-                                        title={personality.includes(trait) ? `${trait} selected` : trait}
-                                        onPress={() => toggleSelection(trait, personality, setPersonality)}
-                                    />
-                                </View>
-                            ))}
-                        </View>
+                        {renderSelectableGroup(
+                            "Availability slots",
+                            availabilitySlotOptions,
+                            availabilitySlots,
+                            setAvailabilitySlots
+                        )}
                     </>
-                ) : null}
-
-                {renderSelectableGroup("Languages", languageOptions, languages, setLanguages)}
-                {renderSelectableGroup("Interests", interestOptions, interests, setInterests)}
-                {renderSelectableGroup("Vibe", vibeOptions, vibe, setVibe)}
-                {renderSelectableGroup("Travel style", travelStyleOptions, travelStyle, setTravelStyle)}
-                {selectedRole === "operator"
-                    ? renderSelectableGroup("Help topics", helpTopicOptions, helpTopics, setHelpTopics)
-                    : null}
+                ) : (
+                    <>
+                        {renderSelectableGroup("Languages", languageOptions, languages, setLanguages)}
+                        {renderSelectableGroup("Interests", interestOptions, interests, setInterests)}
+                        {renderSelectableGroup("Vibe", vibeOptions, vibe, setVibe)}
+                        {renderSelectableGroup("Travel style", travelStyleOptions, travelStyle, setTravelStyle)}
+                    </>
+                )}
 
                 <Button
-                    title={isSubmitting ? "Creating your profile..." : "Create Aylix Profile"}
+                    title={
+                        isSubmitting
+                            ? selectedRole === "operator"
+                                ? "Saving your operator profile..."
+                                : "Creating your profile..."
+                            : selectedRole === "operator"
+                              ? "Save Operator Profile"
+                              : "Create Aylix Profile"
+                    }
                     onPress={handleCreate}
                     disabled={isSubmitting || Boolean(validationMessage)}
                 />

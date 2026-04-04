@@ -2,7 +2,7 @@
 
 ## Current MVP Objective
 
-Validate the core onboarding-to-profile loop with a simple Expo client and Express API, while keeping the system easy to change.
+Validate the role-based onboarding, dashboard, and request loop with a simple Expo client and Express API, while keeping the system easy to change.
 
 ## Current Architecture
 
@@ -10,11 +10,12 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 - Expo app for React Native and web
 - Expo Router for screen routing
-- Screens: `onboarding`, `profile`, `request`, `operator/inbox`, `operator/request`, `session`, `call`, `review`, `history`, `operator/history`, `operator/earnings`
+- Screens: `entry`, `onboarding`, `traveler/home`, `traveler/requests`, `traveler/request`, `operator/home`, `profile`, `request`, `operator/inbox`, `operator/request`, `session`, `call`, `review`, `history`, `operator/history`, `operator/earnings`
 - API access centralized in `app/lib/api.ts`
-- Local profile, latest review, and trust persistence via AsyncStorage in `app/lib/storage.ts`
+- Local profile, selected role, traveler request summaries, latest review, and trust persistence via AsyncStorage in `app/lib/storage.ts`
+- Entry screen routes first-time users into role-aware onboarding and returning users into the correct home screen
 - Onboarding uses `ScrollView` to stay usable on smaller screens and with the keyboard open
-- Onboarding includes a simple local availability selector for helper readiness
+- Operator onboarding now uses grouped sections for identity, languages, role, capabilities, experience, response sample, and availability
 
 ### Backend
 
@@ -47,14 +48,14 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 ## Core User Flow
 
 1. App launches and checks AsyncStorage for a saved profile.
-2. If no saved profile exists, the user is routed to onboarding.
-3. The user submits onboarding data.
+2. If no saved profile exists, the user lands on Entry and chooses traveler or operator.
+3. The selected role is saved locally and the user enters role-aware onboarding.
 4. The app creates a user through `POST /users`.
 5. The app creates a profile through `POST /profiles`.
 6. The created profile is saved locally.
-7. The app routes to the profile screen.
-8. The user can see whether their profile is currently available to help.
-9. The user starts a help request from the profile screen by answering `What do you need?`
+7. The user is routed to the correct role home.
+8. Travelers can open `Find Operator`, `My Requests`, and `Profile` from Traveler Home.
+9. Operators can open `Inbox` and `Profile` from Operator Home and can see local availability state.
 10. In the current QA baseline, the API returns all operators whose `isAvailable` value is not `false`.
 11. The request flow no longer blocks a traveler who already has another active request.
 12. All available operators are nominated in QA mode so the traveler can always see candidates.
@@ -71,21 +72,24 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 23. Review submission is saved against the completed request and updates local trust for the reviewed user.
 24. Traveler and operator can both view completed session history from their side of the app.
 25. Operators can view a lightweight earnings snapshot derived from completed paid sessions.
-26. The user returns to the profile screen and can see review memory still reflected in the app.
-27. On later launches, the app goes straight to the profile screen if saved profile data exists.
-28. The user can reset the saved profile and return to onboarding.
+26. On later launches, the app goes straight to the correct role home if saved profile data exists.
+27. The user can reset the saved profile and return to Entry.
 
 ## What Currently Works
 
 - Expo app runs with router-based navigation
+- Entry screen supports first-time role selection and returning-user continuation
 - Onboarding screen creates a user and profile through the API
 - Onboarding supports display name, city, languages, interests, vibe tags, travel style, and help topics through predefined selections
-- Onboarding lets new profiles default to available and optionally mark themselves not available
-- Onboarding now supports roles, capabilities, and personality traits for operator matching
-- Onboarding city is now constrained to the current mock operator city list for exact-value consistency
-- Profile screen loads route params safely, falls back to AsyncStorage, and avoids the earlier render loop issue
-- Profile screen shows whether the current profile is available to help
-- Profile screen now acts as the entry point into request-based matching
+- Onboarding city is constrained to the current mock operator city list for exact-value consistency
+- Operator onboarding now supports required languages, roles, capabilities, response sample, availability, and optional experience details
+- Operator onboarding uses backend validation that mirrors frontend required fields
+- Traveler and operator homes now act as the main role-based dashboards
+- Traveler home shows quick actions, request summary, and a current active request card when present
+- Operator home shows quick actions, local availability state, and a current work card when present
+- My Requests now shows real traveler request summaries from local storage
+- Traveler request detail and operator request detail use a shared friendly lifecycle vocabulary
+- Profile screen loads route params safely, falls back to AsyncStorage, and shows saved operator onboarding details
 - Request screen lets users choose an intent, optional description, and urgency
 - Request screen now includes a `DEBUG: Fetch Operators` action for QA
 - QA-mode request matching now returns every operator with `isAvailable !== false`
@@ -118,7 +122,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Request completion now finalizes lightweight accounting fields such as `completedAt`, `platformFeePercent`, `operatorEarnings`, and `payoutStatus`
 - Operator earnings screen now shows net earnings, gross earnings, pending, paid out, completed sessions, average rating, and recent transactions
 - App remembers the created profile between launches
-- App auto-routes to onboarding or profile based on saved state
+- App auto-routes to Entry or the correct role home based on saved state
 - User can clear saved profile and restart the flow
 - Onboarding remains usable on small screens because the form scrolls correctly
 - Onboarding and profile copy now feel more product-oriented and less like raw dev screens
@@ -138,6 +142,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Trust is frontend-only and stored locally on-device
 - Trust uses a simple averaging formula with defaults instead of a richer reputation model
 - Availability is a simple profile flag and not a real-time presence system
+- Operator onboarding currently uses existing internal role and capability values behind friendlier labels rather than a fully separate operator taxonomy
 - Call screen is only a placeholder flow and does not implement real audio
 - Request polling is client-side and lightweight rather than event-driven realtime
 - Request expiry and timeout are applied lazily instead of through a background worker
@@ -145,6 +150,7 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 - Payment status is a structural placeholder and does not process or move real money
 - Operator identity still depends on the saved local profile because there is no auth layer
 - Travelers can currently create multiple active requests in QA mode because duplicate-active-request blocking is temporarily disabled
+- Deposit-backed activation, payment authorization, and request spam throttling are not implemented yet
 - Reserved-session handoff is a lightweight state transition and not yet a true pre-call coordination layer
 - Active session state is still a placeholder layer and not a real live-call transport
 - Reviews are single-submit only and do not support editing, deletion, or moderation
@@ -186,11 +192,12 @@ Validate the core onboarding-to-profile loop with a simple Expo client and Expre
 
 ## Current Stage
 
-Core onboarding, profile memory, local readiness, forced QA-mode operator visibility, traveler selection, reservation, session handoff, active session placeholder state, session locking, review submission, completed session history, operator earnings snapshots, local trust, simulated call states, and the review loop are working in a stabilized MVP QA baseline. The app now has a forced working request-to-session backbone for manual testing, with the matching layer temporarily simplified so operators reliably appear.
+Role-based entry, operator onboarding, local profile memory, dashboard routing, forced QA-mode operator visibility, traveler selection, reservation, session handoff, active session placeholder state, session locking, review submission, completed session history, operator earnings snapshots, local trust, simulated call states, and the review loop are working in a stabilized MVP QA baseline. The app now has a forced working role-to-home-to-request backbone for manual testing, with the matching layer temporarily simplified so operators reliably appear.
 
 ## Next Steps
 
 - Restore or refine non-QA matching only after the current forced baseline is consistently reliable
+- Extend the new operator onboarding fields into future trust scoring and operator quality filtering
 - Continue tightening request lifecycle, reservation, session handoff, active session state, session locking, trust, review, history, and earnings behavior for reliability
 - Improve profile and match presentation without changing the core flow
 - Hold the architecture simple until the current loop feels consistently stable
@@ -229,3 +236,10 @@ Build the smallest useful version of the core user loop, make it reliable, and d
 - Day 24: Active Session Placeholder & Post-Call Review Entry
 - Day 25: Review Submission & Completed Session History
 - Day 26: Operator Earnings Snapshot & Final MVP Flow Polish
+- Day 27: QA Matching Baseline & Request Unblocking
+- Day 28: Role-Based Entry & Navigation
+- Day 29: Local Identity & Role-Aware Onboarding Flow
+- Day 30: Traveler and Operator Dashboards
+- Day 31: Unified Request Lifecycle
+- Day 32: Active Request and Work Cards
+- Day 33: Operator Onboarding MVP

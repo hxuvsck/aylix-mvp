@@ -7,6 +7,7 @@ const app = express();
 const PORT = 4000;
 const QA_MODE = true;
 
+const onboardingRoleValues = ["traveler", "operator"] as const;
 const roleValues = ["guide", "local", "expert", "companion"] as const;
 const helpIntentValues = ["food", "navigation", "translation", "explore", "emergency"] as const;
 const urgencyValues = ["low", "medium", "high"] as const;
@@ -26,6 +27,7 @@ const paymentStatusValues = ["none", "quoted", "reserved", "paid", "refunded"] a
 const payoutStatusValues = ["pending", "available", "paid"] as const;
 
 type Role = (typeof roleValues)[number];
+type OnboardingRole = (typeof onboardingRoleValues)[number];
 type HelpIntent = (typeof helpIntentValues)[number];
 type Urgency = (typeof urgencyValues)[number];
 type HelpRequestStatus = (typeof helpRequestStatusValues)[number];
@@ -51,11 +53,16 @@ type Profile = {
   id: string;
   userId: string;
   displayName: string;
+  role?: OnboardingRole;
   isAvailable?: boolean;
   roles?: Role[];
   capabilities?: string[];
   personality?: string[];
   trustScore?: number;
+  hasExperience?: boolean;
+  experienceNote?: string;
+  responseSample?: string;
+  availabilitySlots?: string[];
   bio?: string;
   city?: string;
   countryCode?: string;
@@ -371,14 +378,17 @@ function hasActiveRequest(userId: string) {
 }
 
 function hasOperatorIntent(profile: {
+  role?: OnboardingRole | undefined;
   roles?: Role[] | undefined;
   capabilities?: string[] | undefined;
   languages?: string[] | undefined;
+  responseSample?: string | undefined;
 }) {
   return (
+    profile.role === "operator" ||
     (profile.roles?.length ?? 0) > 0 ||
     (profile.capabilities?.length ?? 0) > 0 ||
-    (profile.languages?.length ?? 0) > 0
+    getTrimmedString(profile.responseSample).length > 0
   );
 }
 
@@ -393,11 +403,13 @@ function isOperatorProfileComplete(profile: {
   roles?: Role[] | undefined;
   capabilities?: string[] | undefined;
   languages?: string[] | undefined;
+  responseSample?: string | undefined;
 }) {
   return (
     (profile.roles?.length ?? 0) > 0 &&
     (profile.capabilities?.length ?? 0) > 0 &&
-    (profile.languages?.length ?? 0) > 0
+    (profile.languages?.length ?? 0) > 0 &&
+    getTrimmedString(profile.responseSample).length > 0
   );
 }
 
@@ -1303,11 +1315,16 @@ app.post("/profiles", (req, res) => {
   const {
     userId: rawUserId,
     displayName: rawDisplayName,
+    role: rawRole,
     isAvailable: rawIsAvailable,
     roles: rawRoles,
     capabilities: rawCapabilities,
     personality: rawPersonality,
     trustScore: rawTrustScore,
+    hasExperience: rawHasExperience,
+    experienceNote: rawExperienceNote,
+    responseSample: rawResponseSample,
+    availabilitySlots: rawAvailabilitySlots,
     bio,
     city,
     countryCode,
@@ -1320,11 +1337,18 @@ app.post("/profiles", (req, res) => {
 
   const userId = getTrimmedString(rawUserId);
   const displayName = getTrimmedString(rawDisplayName);
+  const parsedRole = getEnumValue(rawRole, onboardingRoleValues);
+  const role: OnboardingRole | undefined =
+    rawRole === undefined ? undefined : parsedRole ?? undefined;
   const isAvailable = getBoolean(rawIsAvailable);
   const roles = getRoleArray(rawRoles);
   const capabilities = getStringArray(rawCapabilities);
   const personality = getStringArray(rawPersonality);
   const trustScore = getNumber(rawTrustScore);
+  const hasExperience = getBoolean(rawHasExperience);
+  const experienceNote = getTrimmedString(rawExperienceNote);
+  const responseSample = getTrimmedString(rawResponseSample);
+  const availabilitySlots = getStringArray(rawAvailabilitySlots);
   const languages = getStringArray(rawLanguages);
   const interests = getStringArray(rawInterests);
   const trimmedBio = getTrimmedString(bio);
@@ -1362,6 +1386,10 @@ app.post("/profiles", (req, res) => {
     return res.status(400).json({ error: "isAvailable must be a boolean" });
   }
 
+  if (rawRole !== undefined && !role) {
+    return res.status(400).json({ error: "role must be traveler or operator" });
+  }
+
   if (roles === null) {
     return res.status(400).json({ error: "roles must be an array of valid role values" });
   }
@@ -1376,6 +1404,10 @@ app.post("/profiles", (req, res) => {
 
   if (trustScore === null) {
     return res.status(400).json({ error: "trustScore must be a number" });
+  }
+
+  if (hasExperience === null) {
+    return res.status(400).json({ error: "hasExperience must be a boolean" });
   }
 
   if (languages === null) {
@@ -1398,10 +1430,16 @@ app.post("/profiles", (req, res) => {
     return res.status(400).json({ error: "helpTopics must be an array" });
   }
 
+  if (availabilitySlots === null) {
+    return res.status(400).json({ error: "availabilitySlots must be an array" });
+  }
+
   const operatorIntent = hasOperatorIntent({
+    role,
     roles,
     capabilities,
     languages,
+    responseSample,
   });
 
   if (operatorIntent && (!roles || roles.length === 0)) {
@@ -1416,15 +1454,24 @@ app.post("/profiles", (req, res) => {
     return res.status(400).json({ error: "Add at least one language" });
   }
 
+  if (operatorIntent && !responseSample) {
+    return res.status(400).json({ error: "Add a response sample" });
+  }
+
   const profile: Profile = {
     id: crypto.randomUUID(),
     userId,
     displayName,
+    ...(role ? { role } : {}),
     ...(isAvailable !== undefined ? { isAvailable } : {}),
     ...(roles ? { roles } : {}),
     ...(capabilities ? { capabilities } : {}),
     ...(personality ? { personality } : {}),
     ...(trustScore !== undefined ? { trustScore } : {}),
+    ...(hasExperience !== undefined ? { hasExperience } : {}),
+    ...(experienceNote ? { experienceNote } : {}),
+    ...(responseSample ? { responseSample } : {}),
+    ...(availabilitySlots ? { availabilitySlots } : {}),
     ...(trimmedBio ? { bio: trimmedBio } : {}),
     ...(trimmedCity ? { city: trimmedCity } : {}),
     ...(trimmedCountryCode ? { countryCode: trimmedCountryCode } : {}),

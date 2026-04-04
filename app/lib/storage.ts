@@ -43,6 +43,10 @@ export type SavedProfile = {
   travelStyle: string[];
   helpTopics: string[];
   isAvailable: boolean;
+  hasExperience?: boolean;
+  experienceNote?: string;
+  responseSample?: string;
+  availabilitySlots: string[];
 };
 
 export type SavedTravelerRequest = {
@@ -76,14 +80,17 @@ function getStringArray(value: unknown) {
 }
 
 function hasOperatorIntent(profile: {
+  role?: SelectedAppRole | string;
   roles?: string[];
   capabilities?: string[];
   languages?: string[];
+  responseSample?: string;
 }) {
   return (
+    profile.role === "operator" ||
     (profile.roles?.length ?? 0) > 0 ||
     (profile.capabilities?.length ?? 0) > 0 ||
-    (profile.languages?.length ?? 0) > 0
+    getTrimmedString(profile.responseSample).length > 0
   );
 }
 
@@ -91,11 +98,13 @@ function isOperatorProfileComplete(profile: {
   roles?: string[];
   capabilities?: string[];
   languages?: string[];
+  responseSample?: string;
 }) {
   return (
     (profile.roles?.length ?? 0) > 0 &&
     (profile.capabilities?.length ?? 0) > 0 &&
-    (profile.languages?.length ?? 0) > 0
+    (profile.languages?.length ?? 0) > 0 &&
+    getTrimmedString(profile.responseSample).length > 0
   );
 }
 
@@ -109,9 +118,12 @@ function sanitizeProfile(profile: unknown): SavedProfile | null {
   const displayName = getTrimmedString(rawProfile.displayName);
   const city = getTrimmedString(rawProfile.city);
   const role = getTrimmedString(rawProfile.role);
+  const responseSample = getTrimmedString(rawProfile.responseSample);
+  const experienceNote = getTrimmedString(rawProfile.experienceNote);
   const roles = getStringArray(rawProfile.roles);
   const capabilities = getStringArray(rawProfile.capabilities);
   const languages = getStringArray(rawProfile.languages);
+  const availabilitySlots = getStringArray(rawProfile.availabilitySlots);
 
   if (
     !uuidPattern.test(userId) ||
@@ -123,8 +135,8 @@ function sanitizeProfile(profile: unknown): SavedProfile | null {
   }
 
   if (
-    hasOperatorIntent({ roles, capabilities, languages }) &&
-    !isOperatorProfileComplete({ roles, capabilities, languages })
+    hasOperatorIntent({ role, roles, capabilities, languages, responseSample }) &&
+    !isOperatorProfileComplete({ roles, capabilities, languages, responseSample })
   ) {
     return null;
   }
@@ -144,6 +156,10 @@ function sanitizeProfile(profile: unknown): SavedProfile | null {
     travelStyle: getStringArray(rawProfile.travelStyle),
     helpTopics: getStringArray(rawProfile.helpTopics),
     isAvailable: rawProfile.isAvailable === false ? false : true,
+    hasExperience: rawProfile.hasExperience === true,
+    ...(experienceNote ? { experienceNote } : {}),
+    ...(responseSample ? { responseSample } : {}),
+    availabilitySlots,
   };
 }
 
