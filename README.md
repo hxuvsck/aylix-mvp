@@ -22,21 +22,20 @@ npm install
 npx expo start          # press i / a / w for iOS, Android, web
 ```
 
-With no Supabase keys the app runs in **demo mode**: any phone number, any 6-digit code, operators reply on timers,
+Without `app/.env` the app runs in **demo mode**: any phone number, any 6-digit code, operators reply on timers,
 nothing is saved. Profile → "Demo: view the app as" switches between traveler, operator and admin.
 
-## Connect Supabase
+## Supabase
 
-1. Create a Supabase project (region: Seoul `ap-northeast-2`).
-2. Run `supabase/migrations/20261123000000_aylix_core.sql` in the SQL editor (or `supabase db push`).
-3. Database → Extensions → enable `pg_cron`, then run
-   `select cron.schedule('aylix-tick', '* * * * *', 'select public.tick()');`
-   (moves offers on after 5 min, refunds after 10 min, releases payouts after 48 h).
-4. Authentication → Providers → Phone: turn on and connect an SMS provider (Twilio, MessageBird or Vonage).
-5. Copy `app/.env.example` to `app/.env` and fill in the project URL and anon key.
-6. Make yourself admin: `update profiles set role = 'admin' where phone = '<your phone>';`
-7. Approve an operator (after their interview): sign them in once in the app, then
-   `select admin_set_operator('<their user id>', 'approved');` while signed in as admin, or update `operators` in the dashboard.
+Project **aylix** (`mgpkgnnnvagqdnjmmomj`, Seoul). The migrations in `supabase/migrations/` are applied, and the
+`aylix-tick` cron job runs `tick()` every minute (5-min offer expiry, 10-min refund, 48 h payout release).
+`app/.env.example` holds the public URL and publishable key; copy it to `app/.env`.
+
+Still to do in the Supabase dashboard:
+1. **Authentication → Providers → Phone:** turn on and connect an SMS provider (Twilio, MessageBird or Vonage).
+   Until then, add test numbers with fixed codes under Phone → "Test phone numbers".
+2. **Make yourself admin** after your first sign-in: `update profiles set role = 'admin' where phone = '<your phone, no +>';`
+3. **Approve an operator** after their interview: they sign in once, then (as admin) `select admin_set_operator('<user id>', 'approved');`
 
 ## How a Request moves
 

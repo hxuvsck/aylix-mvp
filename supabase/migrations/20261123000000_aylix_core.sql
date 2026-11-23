@@ -349,8 +349,7 @@ begin
   from requests q where q.id = pi.request_id and pi.status = 'on_hold' and pi.release_at <= now() and q.status in ('closed_solved', 'closed');
 end $$;
 
--- Enable pg_cron in the dashboard (Database → Extensions), then:
--- select cron.schedule('aylix-tick', '* * * * *', 'select public.tick()');
+-- Scheduled every minute by migration 20261123000100_tick_cron.sql
 
 -- ───────────────────────── Admin actions ─────────────────────────
 create or replace function admin_confirm_payment(rid uuid) returns void language plpgsql security definer set search_path = public as $$
@@ -450,12 +449,9 @@ create policy "admin pays" on payout_items for update using (is_admin());
 -- Realtime for chat and status changes
 alter publication supabase_realtime add table messages, requests, request_offers;
 
--- Public operator stats shown to travelers (no personal data)
-create view operator_public with (security_invoker = false) as
-  select o.id, split_part(coalesce(p.full_name, 'Operator'), ' ', 1) as first_name, o.languages, o.licensed_guide,
-         round(avg(r.stars)::numeric, 1) as rating, count(r.*) as rating_count
-  from operators o join profiles p on p.id = o.id left join requests q on q.operator_id = o.id left join ratings r on r.request_id = q.id
-  where o.status = 'approved' group by o.id, p.full_name;
-grant select on operator_public to authenticated;
 
-revoke execute on function route_request, tick, refund_full, sys_msg from public, anon, authenticated;
+-- Internal helpers: only callable from other functions and pg_cron
+revoke execute on function route_request, tick, refund_full, sys_msg, handle_new_user from public, anon, authenticated;
+-- Signed-in actions: not for anonymous visitors
+revoke execute on function create_request, submit_payment, request_rematch, close_request, rate_request, set_online, respond_offer,
+  admin_confirm_payment, admin_decide, admin_set_operator from public, anon;
